@@ -7285,12 +7285,12 @@ var ee;
 )(ee || (ee = {}));
 var vn; // different types of properties
 (function(t) {
-    t[t.property = 0] = "property",
+    t[t.property = 0] = "property", // for a self-owned property, e.g. issue.title
     t[t.ephemeralProperty = 1] = "ephemeralProperty",
-    t[t.reference = 2] = "reference",
-    t[t.referencedModel = 3] = "referencedModel",
+    t[t.reference = 2] = "reference", // for reference target, e.g. issue.documentContent
+    t[t.referencedModel = 3] = "referencedModel", //  for reference target's id, e.g. issue.documentContentId
     t[t.referenceCollection = 4] = "referenceCollection",
-    t[t.backReference = 5] = "backReference",
+    t[t.backReference = 5] = "backReference", // for back reference, e.g. documentContent.issue
     t[t.referenceArray = 6] = "referenceArray"
 }
 )(vn || (vn = {}));
@@ -32622,7 +32622,7 @@ function kl(t, e, n) {
         })
     }
 }
-function ii(t, e, n) {
+function ii(t, e, n) { // Decorator: ReferenceArray
     return (r,s)=>{
         const i = {
             type: vn.referenceCollection,
