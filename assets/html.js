@@ -7119,7 +7119,7 @@ const rr = class rr {
         },
         this.modelPropertyLookup[e][n] = r), // bind to the dictionary
 
-        // reference or referenceArray
+        // reference or referenceArray are registered 
         r.referencedProperty || r.type === 2 || r.type === 6) {
             const i = this.modelReferencedPropertyLookup[e];
             i ? i[n] = r : (this.modelReferencedPropertyLookup[e] = {},
@@ -7127,6 +7127,7 @@ const rr = class rr {
             // for reference properties, the configuration registered here
             // would be used to get reference values
         }
+
         if (r.lazy)
             if (r.type === 4) { // reference collection
                 const i = this.modelLazyCollectionKeys[e];
@@ -7135,7 +7136,7 @@ const rr = class rr {
                 const i = this.modelLazyReferenceKeys[e];
                 i ? i.push(n) : this.modelLazyReferenceKeys[e] = [n]
             }
-        if (r.cascadeHydration) {
+        if (r.cascadeHydration) { // if should cascade hydration
             const i = this.modelCascadeHydrationKeys[e];
             i ? i.push(n) : this.modelCascadeHydrationKeys[e] = [n]
         }
@@ -7267,6 +7268,7 @@ rr.modelPropertyLookup = {},
 rr.modelActionLookup = {},
 rr.modelComputedLookup = {},
 rr.modelDataPropertyLookup = {},
+// store referenced model ids
 rr.modelReferencedPropertyLookup = {},
 rr.modelLazyReferenceKeys = {},
 rr.modelLazyCollectionKeys = {},
@@ -7287,8 +7289,8 @@ var vn; // different types of properties
 (function(t) {
     t[t.property = 0] = "property", // for a self-owned property, e.g. issue.title
     t[t.ephemeralProperty = 1] = "ephemeralProperty",
-    t[t.reference = 2] = "reference", // for reference target, e.g. issue.documentContent
-    t[t.referencedModel = 3] = "referencedModel", //  for reference target's id, e.g. issue.documentContentId
+    t[t.reference = 2] = "reference", // for reference target's id, e.g. issue.documentContentId
+    t[t.referencedModel = 3] = "referencedModel", //  for reference target, e.g. issue.documentContent
     t[t.referenceCollection = 4] = "referenceCollection",
     t[t.backReference = 5] = "backReference", // for back reference, e.g. documentContent.issue
     t[t.referenceArray = 6] = "referenceArray"
@@ -7989,6 +7991,9 @@ class Ed extends Error {
         this.underlyingError = n
     }
 }
+/**
+ * LazyReferenceCollectionImpl
+ */
 class Et extends te { // LazyReference
     get elements() {
         return this.isHydrated() || this.hydrate(),
@@ -8029,7 +8034,7 @@ class Et extends te { // LazyReference
     async isLocallyAvailable() {
         return this.isHydrated() ? !0 : at.store.syncClient.hasModelsForPartialIndexValues(this.modelClass.modelName, this.getCoveringPartialIndexValues())
     }
-    hydrate(e) {
+    hydrate(e) { // hydrate a lazy reference
         var s, i, a, o;
         if (this.hydrationPromise && (!this.isHydrationPromiseLocalOnly || e != null && e.onlyIfLocallyAvailable))
             return this.hydrationPromise;
@@ -32333,13 +32338,14 @@ const Bc = {
         let i = s;
         const o = (await jn.databases()).filter(p=>p.userId === n && p.version > i).orderBy(["version"], ["desc"]);
         o.length > 0 && (i = o[0].version);
+        // the following code calculates the schemaHash of the database.
         const l = await this.userVersion(n)
           , d = "linear_" + $1(`${n}_fake_token__${i}${l ? `_${l}` : ""}`)
           , u = $1(`
       ${r}_${Bc.indexVersion}_${Bc.partialObjectStoreSchemaVersion}_${Bc.syncActionStoreVersion}`)
           , h = (await this.databases()).find(p=>p.name === d);
-        let f = h && Number(h == null ? void 0 : h.schemaVersion) || 1;
-        return h && h.schemaHash !== u && f++,
+        let f = h && Number(h == null ? void 0 : h.schemaVersion) || 1; // schemaVersion starts with 1
+        return h && h.schemaHash !== u && f++, // if the schema mismatches, we increment the schemaVersion
         {
             name: d,
             createdAt: Date.now(),
@@ -32495,9 +32501,15 @@ const t2 = ke.get("databaseVersionOverrides", {
 if (t2 && t2.models)
     for (const t in t2.models)
         Bc.models[t] = t2.models[t];
+/**
+ * Action decorator
+ */
 function rt(t, e) {
     Me.registerAction(t.constructor.name, e)
 }
+/**
+ * Computed decorator
+ */
 function O(t, e) {
     Me.registerComputed(t.constructor.name, e)
 }
@@ -32507,9 +32519,7 @@ function m_(t) {
     }
 }
 /**
- * @Preperty
- * @param {*} t 
- * @returns 
+ * Property decorator
  */
 function w(t={}) {
     return (e,n)=>{
@@ -32529,9 +32539,7 @@ function w(t={}) {
     }
 }
 /**
- * @EphemeralProperty
- * @param {*} t 
- * @returns 
+ * EphemeralProperty decorator
  */
 function g_(t={}) {
     return (e,n)=>{
@@ -32547,7 +32555,7 @@ function g_(t={}) {
     }
 }
 /**
- * @ReferenceCollection
+ * ReferenceCollection decorator
  */
 function xe() {
     return (t,e)=>{
@@ -32558,7 +32566,7 @@ function xe() {
     }
 }
 /**
- * @LazyReferenceCollection
+ * LazyReferenceCollection decorator
  */
 function Nt(t) {
     return (e,n)=>{
@@ -32574,32 +32582,45 @@ function Nt(t) {
 }
 
 /**
- * wn: refernce to another model
+ * BackReference decorator
  */
 function pe(t, e, n) {
     return (r,s)=>{
         A4(r, s, n, e, t)
     }
 }
+
 /**
- * wn: create a back reference to the first parameter
+ * LazyBackReference decorator
  */
 function Hr(t, e, n) {
     return (r,s)=>{
         j4(r, s, n, e, t)
     }
 }
-function Ue(t, e) { // reference model
+
+/**
+ * Reference with no back references decorator
+ */
+function Ue(t, e) {
     return (n,r)=>{
         A4(n, r, e, void 0, t)
     }
 }
+
+/**
+ * LazyReference with no back references decorator
+ */
 function g5(t, e) {
     return (n,r)=>{
         j4(n, r, e, void 0, t)
     }
 }
-function Dt(t, e, n) { // reference model
+
+/**
+ * ReferenceOrBack decorator.
+ */
+function Dt(t, e, n) {
     return (r,s)=>{
         typeof t == "function" ? A4(r, s, n, e, t) : A4(r, s, {
             persistance: ee.none,
@@ -32608,6 +32629,10 @@ function Dt(t, e, n) { // reference model
         })
     }
 }
+
+/**
+ * LazyReferenceOrBack decorator
+ */
 function kl(t, e, n) {
     // t is config or the back reference target model
     // e is the back reference property name
@@ -32622,7 +32647,11 @@ function kl(t, e, n) {
         })
     }
 }
-function ii(t, e, n) { // Decorator: ReferenceArray
+
+/**
+ * ReferenceArray decorator
+ */
+function ii(t, e, n) {
     return (r,s)=>{
         const i = {
             type: vn.referenceCollection,
@@ -32670,6 +32699,10 @@ function ii(t, e, n) { // Decorator: ReferenceArray
         Me.registerProperty(r.constructor.name, a, l)
     }
 }
+
+/**
+ * Model decorator
+ */
 function We(t) { // this is the decorator to register a model to ModelRegistry
     return e=>{ // e if the constructor of that model
         M1(e.prototype, "createdAt", !1), // all model would have these 3 default fields, there are made responsive
@@ -32690,8 +32723,13 @@ function We(t) { // this is the decorator to register a model to ModelRegistry
         Me.registerModel(t, e, n) // register the model's name, `class` and hash to ModelRegistry
     }
 }
-function A4(t, e, n, r, s) { // `t` the model decorated, `s` for a function that returns the reference model 
-    // (forwardRef for solving files' circular dependency issue), `e` for property name of `s`
+
+function A4(t, e, n, r, s) { // references helper function
+    // `t` the model decorated, 
+    // `e` for property name of `s`
+    // `r` for the back reference property name
+    // `s` for a function that returns the reference model 
+    // (forwardRef for solving files' circular dependency issue), 
     const i = e + "Id" // such as `cycleId` of `Issue`
       , a = n.nullable
       , o = n.nullable ? !0 : n.optional; // a nullable field must be optional
@@ -32730,7 +32768,7 @@ function A4(t, e, n, r, s) { // `t` the model decorated, `s` for a function that
     n != null && n.onArchive && (d.onArchive = n.onArchive),
     Me.registerProperty(t.constructor.name, i, d)
 }
-function j4(t, e, n, r, s) { // decorate references or lazy references
+function j4(t, e, n, r, s) { // lazy references helper function
     // t the model's prototype
     // e the property's name
     // n configuration
@@ -32793,7 +32831,7 @@ function j4(t, e, n, r, s) { // decorate references or lazy references
     // register lazy reference property
     Me.registerProperty(t.constructor.name, i, u)
 }
-function M1(t, e, n, r) { // the decorator to make a property observable
+function M1(t, e, n, r) { // the helper function to make a property observable
     // `t` for the model's prorotype, `e` for the property's name, 
     // `n` for deep observation, `r` for deseralizer
     const s = e + "_o" // key for observable value, 
@@ -33097,8 +33135,8 @@ Ei([w({
 })], On.prototype, "templateData", void 0);
 Ei([Ue(()=>K, {
     persistance: ee.none,
-    optional: !0,
-    nullable: !1
+    optional: !0, // optional: true, a user may not have templates
+    nullable: !1  // nullable: false, template must have a creator
 })], On.prototype, "creator", void 0);
 Ei([Ue(()=>K, {
     persistance: ee.none,
@@ -33110,8 +33148,8 @@ Ei([pe(()=>he, "allTemplates", {
     persistance: ee.none
 })], On.prototype, "organization", void 0);
 Ei([pe(()=>ne, "templates", {
-    nullable: !1,
-    optional: !0,
+    nullable: !1, // nullable: false
+    optional: !0, // optional: true
     indexed: !0
 })], On.prototype, "team", void 0);
 Ei([w()], On.prototype, "type", void 0);
@@ -62451,6 +62489,7 @@ const I3 = class I3 extends Xc {
 }
 ;
 I3.usedForPartialIndexes = !0;
+/** Project */
 let ie = I3;
 Re([w()], ie.prototype, "name", void 0);
 Re([w()], ie.prototype, "description", void 0);
@@ -62868,6 +62907,7 @@ function Fe(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
+/** Organization */
 class he extends si {
     get projectsPageFacets() {
         return this.facets.filter(e=>e.sourcePage === "projects")
@@ -64464,7 +64504,7 @@ st([xe()], K.prototype, "notifications", void 0);
 st([xe()], K.prototype, "reminders", void 0);
 st([xe()], K.prototype, "pushSubscriptions", void 0);
 st([xe()], K.prototype, "apiKeys", void 0);
-st([Nt()], K.prototype, "assignedIssues", void 0);
+st([Nt()], K.prototype, "assignedIssues", void 0); // Lazy reference to issues. Note that Nt() has no parameter!
 st([Nt()], K.prototype, "createdIssues", void 0);
 st([Nt()], K.prototype, "calendarEvents", void 0);
 st([Nt()], K.prototype, "subscribedIssues", void 0);
@@ -76882,6 +76922,7 @@ const Vs = class Vs extends Xc {
 Vs.usedForPartialIndexes = !0,
 Vs.loadStrategy = dn.partial,
 Vs.partialLoadMode = ki.regular;
+/** Issue. */
 let re = Vs;
 // "w" should be marking that this field is a "property" of "Issue".
 Pe([w({
@@ -76889,10 +76930,11 @@ Pe([w({
     indexed: !0 // this field should be indexed in db
 })], re.prototype, "number", void 0);
 Pe([w()], re.prototype, "title", void 0);
-Pe([kl({
+Pe([kl({ // lazy reference to documentContent
     nullable: !0
 })], re.prototype, "documentContent", void 0);
-Pe([pe(()=>ne, "issues", { // A team should have many issues. It is an n-1 mapping. ne is actually the class of "Team"
+Pe([pe(()=>ne, "issues", { // back reference to team
+    // A team should have many issues. It is an n-1 mapping. ne is actually the class of "Team"
     optional: !1, // must belong to a team
     nullable: !1, // must belong to a team
     indexed: !0, // we may want to get all issues of a team
@@ -76901,7 +76943,7 @@ Pe([pe(()=>ct, "issues", {
     nullable: !0,
     indexed: !0,
     onDelete: "SET NULL", // when the cycle is removed, the issue should set it's cycle field to null
-    onArchive: "NO ACTION"
+    onArchive: "NO ACTION" // when the cycle is archived, 
 })], re.prototype, "cycle", void 0);
 Pe([pe(()=>ie, "issues", {
     nullable: !0,
@@ -76943,10 +76985,10 @@ Pe([g5(()=>qn, {
     nullable: !1,
     indexed: !0
 })], re.prototype, "externalUserCreator", void 0);
-Pe([pe(()=>K, "assignedIssues", {
+Pe([pe(()=>K, "assignedIssues", { // User refers to a collection of Issues model on property "assignedIssues"
     nullable: !0,
     indexed: !0
-})], re.prototype, "assignee", void 0);
+})], re.prototype, "assignee", void 0); // issue refers to a User model on property "assignee"
 Pe([Ue(()=>K, {
     nullable: !0
 })], re.prototype, "snoozedBy", void 0);
@@ -79219,7 +79261,8 @@ var bw;
     t[t.forceOff = 2] = "forceOff"
 }
 )(bw || (bw = {}));
-class TE { // class Full Database Store
+/** FullStore */
+class TE { 
     get isReady() {
         return this.ready
     }
@@ -79245,13 +79288,13 @@ class TE { // class Full Database Store
         return (e = this.cachedData) == null ? void 0 : e.length
     }
     constructor(e, n, r) {
-        this.ready = !1,
-        this.flushed = !1,
+        this.ready = !1, // if the store is ready (has loaded data)
+        this.flushed = !1, // if the store is in sync with the database
         this.flushErrored = !1,
         this.graphQLClient = n,
         this.modelName = e,
         this.options = r,
-        this.storeName = $1(e + Me.propertyHashOfModel(e))
+        this.storeName = $1(e + Me.propertyHashOfModel(e)) // the table name in the database
     }
     async modelCount(e) {
         return this.cachedData ? this.cachedData.length : await e.count(this.storeName) || 0
@@ -79281,7 +79324,7 @@ class TE { // class Full Database Store
         n.objectStore(dr).put({
             persisted: !1
         }, this.modelName),
-        e.createObjectStore(this.storeName, {
+        e.createObjectStore(this.storeName, { // create a table in the database for the model, the table's name is the model's hash
             keyPath: "id"
         })),
         this.createIndexes(n),
@@ -79291,7 +79334,8 @@ class TE { // class Full Database Store
         return e.clear(this.storeName)
     }
     setModelData(e) {
-        this.cachedData = e,
+        this.cachedData = e, // cacheData is for caching values that should be written into the database
+        // it would be cleared when the flush is done
         this.ready = !0,
         this.flushed = !1
     }
@@ -79320,7 +79364,7 @@ class TE { // class Full Database Store
     async setPartialIndexValue(e, n) {}
     async getPartialIndexValues(e) {}
     inflightRequestForPartialIndexValue(e) {}
-    async flush(e) {
+    async flush(e) { // sync the in-memory store with the database
         if (!this.cachedData || this.flushed)
             return;
         this.flushed = !0;
@@ -79383,7 +79427,8 @@ class TE { // class Full Database Store
         }
     }
 }
-const Jm = class Jm extends TE { // class: Partial Database Manager
+/** PartialStore */
+const Jm = class Jm extends TE {
     constructor(e, n) {
         super(e, n, {
             required: !1
@@ -79529,16 +79574,18 @@ class cce { // store manager
     get requiresFlushing() {
         return this.objectStores.find(e=>e.requiresFlushing) !== void 0
     }
-    constructor(e, n) {
+    constructor(e, n) { // when StoreManager is constructed, it would create Store for each model registered
         var s;
         this.objectStoreLookup = {},
         this.objectStores = [],
         this._onSavingStoreCountChange = new Tt;
-        const r = n.requiredModels.map(i=>Me.getClassName(i));
+        const r = n.requiredModels.map(i=>Me.getClassName(i)); // some models are required to boot immediately
         for (const i of Me.getModelNames()) {
-            const o = ((s = Me.getModelClass(i)) == null ? void 0 : s.loadStrategy) === dn.partial ? new p3(i,e) : new TE(i,e,{
-                required: r.includes(i)
-            });
+            const o = ((s = Me.getModelClass(i)) == null ? void 0 : s.loadStrategy) === dn.partial 
+                ? new p3(i,e) // create ParitalStore
+                : new TE(i,e,{ // create FullStore
+                    required: r.includes(i)
+                  });
             this.objectStoreLookup[i] = o,
             this.objectStores.push(o)
         }
@@ -79589,13 +79636,13 @@ class cce { // store manager
             return
         }
     }
-    createStores(e, n) {
+    createStores(e, n) { // create tables in the database
         const r = new Set(e.objectStoreNames);
         r.has(Mc) || e.createObjectStore(Mc, { // create "_transactions" store
             keyPath: "id",
             autoIncrement: !0
         }),
-        r.has(dr) || e.createObjectStore(dr),
+        r.has(dr) || e.createObjectStore(dr), // create "_meta" store
         r.delete(Mc),
         r.delete(dr);
         for (const s of this.objectStores)
@@ -79642,6 +79689,7 @@ class cce { // store manager
         n
     }
     async checkReadinessOfStores(e) {
+        // check if all stores are ready, including the _meta store
         const n = e.transaction(this.objectStores.map(r=>r.storeName).concat(dr), "readwrite");
         await Promise.all(this.objectStores.map(r=>r.checkIsReady(n)))
     }
@@ -79755,7 +79803,11 @@ const eg = class eg { // class: Database
         let s = !1;
         try {
             this.database = await p_(this.name, r.schemaVersion, {
+                // when the schemaVersion changes, or there's no database, the upgrade callback
+                // would be called
                 upgrade: (i,a,o,l)=>{
+                    // i for the new datasbase
+                    // l for the old database
                     F.info("Upgrading database.", {
                         name: this.name
                     }),
@@ -81847,7 +81899,7 @@ const vce = be.MINUTE * 2
         this._shouldResetOnError = !1,
         this.lastSyncId = 0,
         this.backendDatabaseVersion = 0,
-        this.modelLookup = {},
+        this.modelLookup = {}, // the dictionary maps a model's id to the object! It is the object pool.
         this.temporaryModelLookup = {},
         this.archivedModelLookup = {},
         this.modelClassToArchivedModelLookup = {},
@@ -82607,7 +82659,7 @@ const vce = be.MINUTE * 2
     createModel(e, n) {
         const r = this.findById(e, n.id)
           , s = r || new e(!1);
-        return s.store = this.store,
+        return s.store = this.store, // the model's store property are assigned here
         s.updateFromData(n, {
             dataContainsAllProperties: !!r
         }),
