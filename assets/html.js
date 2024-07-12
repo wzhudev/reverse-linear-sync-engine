@@ -80886,21 +80886,21 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
             r != null && r.length && (this.persistedTransactionsEnqueue = this.persistedTransactionsEnqueue.filter(s=>!r.includes(s)))
         }
     }
-    rebaseTransactions(e, n) { // `e` for the model to rebase, `n` for the lastSyncId to be rebased on
+    rebaseTransactions(e, n) { // `e` for the model to rebase, `n` for the lastsyncid to be rebased on
         var r;
-        if (this.lastSyncId = n,
-        this.completedButUnsyncedTransactions.length && (this.completedButUnsyncedTransactions = this.completedButUnsyncedTransactions.filter(s=>(s.syncIdNeededForCompletion || 0) > n)),
-        (r = this.persistedTransactionsEnqueue) != null && r.length || this.queuedTransactions.length || this.executingTransactions.length || this.completedButUnsyncedTransactions.length) {
-            // This line below actually show the time-sequence of these arrays.
-            // completedButUnsyncedTransactions:
-            const s = this.completedButUnsyncedTransactions.concat(this.executingTransactions, this.queuedTransactions, this.persistedTransactionsEnqueue ?? []);
+        if (this.lastsyncid = n,
+        this.completedbutunsyncedtransactions.length && (this.completedbutunsyncedtransactions = this.completedbutunsyncedtransactions.filter(s=>(s.syncidneededforcompletion || 0) > n)),
+        (r = this.persistedtransactionsenqueue) != null && r.length || this.queuedtransactions.length || this.executingtransactions.length || this.completedbutunsyncedtransactions.length) {
+            // this line below actually show the time-sequence of these arrays.
+            // completedbutunsyncedtransactions:
+            const s = this.completedbutunsyncedtransactions.concat(this.executingtransactions, this.queuedtransactions, this.persistedtransactionsenqueue ?? []);
             for (const i of s)
                 i instanceof zu && i.model === e && i.rebase()
         }
     }
     async loadPersistedTransactions(e) {
         this.database = e;
-        const n = await this.database.getAllTransactions();
+        const n = await this.database.getAllTransactions(); // load cached transactions from local database
         F.network(`Loaded ${n.length} persisted transactions`),
         // The only place to assign `persistedTransactionsEnqueue`
         this.persistedTransactionsEnqueue = (await Promise.all(n.map(async s=>{
