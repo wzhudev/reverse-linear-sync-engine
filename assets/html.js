@@ -8447,8 +8447,9 @@ const as = class as { // basic data model class
     get isSingletonModel() {
         return !1
     }
+    // PART III: transaction
     save(e=!1, n) { // the `save` method on every model to trigger syncing
-        return lt(()=>{ // I guess that `lt` is util to run the following function in a the next microtask
+        return lt(()=>{ // `lt` is actually mobx's util function `runInAction`. It kicks MobX awaik to do its job.
             var s;
             const r = this.store.save(this, e, n);
             return this.isInTransaction() || (this._clonedFromModel = void 0),
@@ -8538,14 +8539,14 @@ const as = class as { // basic data model class
             s !== i && (this.modifiedProperties[e] = s)
         }
     }
-    changeSnapshot() { // get the changes of the model
+    changeSnapshot() { // get the changes of the model, it seems to be universal for all models
         const e = {};
         for (const n in this.modifiedProperties) {
             const r = this.properties[n];
             let s, i = this.serializedValue(n, this[n]);
             r.optimizer && this.modifiedProperties[n] && i && (s = i,
             i = r.optimizer.optimizeUpdate(this.modifiedProperties[n], i)),
-            e[n] = {
+            e[n] = { // each modified property would have its own descriptor
                 original: this.modifiedProperties[n],
                 updatedFrom: this.modifiedProperties[n],
                 updated: i,
@@ -8600,9 +8601,9 @@ const as = class as { // basic data model class
         }
         )
     }
-    updateFromData(e, n) {
+    updateFromData(e, n) { // would be called when the client receives deltas from the server
         var s;
-        this.ignoreUpdates = !0;
+        this.ignoreUpdates = !0; // mark we are catching remote changes, all updates from setters would be ignored!
         const r = Me.propertiesOfModel(this.modelName);
         for (const i in e)
             this.setSerializedValue(i, e[i], r[i]);
@@ -62647,6 +62648,7 @@ function Wn(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
+/** Document */
 let Kt = class V9 extends Xc {
     get slug() {
         return `${wl(this.title || "untitled")}-${this.slugId}`
@@ -62699,11 +62701,11 @@ let Kt = class V9 extends Xc {
         return e.save(!0),
         e
     }
-    beforeSave(e) {
+    beforeSave(e) { // e should be nullable
         super.beforeSave(e),
         this.title || (this.title = ""),
         this.title = this.title.trim(),
-        e === !1 && this.title === "" && (this.title = "New document")
+        e === !1 && this.title === "" && (this.title = "New document") // title should not be empty
     }
     applyTemplate(e) {
         const n = e.templateData;
@@ -79797,7 +79799,7 @@ const eg = class eg { // class: Database
             ...e,
             minVersion: n
         });
-        Xn.registerDatabase(r),
+        Xn.registerDatabase(r), // save the database's meta into "databases" database
         this.name = r.name,
         F.network(`Using database ${this.name} schema version ${r.schemaVersion}`);
         let s = !1;
@@ -80160,11 +80162,12 @@ const eg = class eg { // class: Database
         }));
         for (const a of n.modelsToLoad) // here Linear bootstrap all database from each Model
             e.put(dr, {
-                persisted: !1
+                persisted: !1 // first make all models as not persisted
             }, a).catch(()=>{}
             );
         let r;
         if (n.type !== "local") {
+            // If Linear bootstraps for the first time, it could call `fullBootstrap`.
             const o = await (n.type === "full" ? Oo.fullBootstrap(this.graphQLClient, n.modelsToLoad, n.partialModels) : Oo.partialBootstrap(this.graphQLClient, n.modelsToLoad)).catch(d=>{
                 throw d.userError || F.error("Sync bootstrap query error", d, {
                     type: n.type,
@@ -80181,6 +80184,7 @@ const eg = class eg { // class: Database
             );
             Hi.addStartupSpanTag("bootstrap.networkModelCount", o.data.length),
             Hi.addStartupSpanTag("bootstrap.syncPacketCount", ((s = o.syncDeltaPackets) == null ? void 0 : s.length) || 0);
+            // parse 
             const l = o.data.reduce((d,u)=>{
                 const h = u.__class;
                 return delete u.__class,
@@ -80371,7 +80375,8 @@ class ww {
         ))
     }
 }
-const M3 = class M3 { // class Transcation
+/** Base Transaction */
+const M3 = class M3 {
     constructor(e, n, r, s, i) {
         this.retries = 0,
         this.id = M3.nextId++,
@@ -80411,7 +80416,7 @@ const M3 = class M3 { // class Transcation
         this.resolve(1)
     }
     prepare(e) {
-        const n = this.graphQLMutation(e);
+        const n = this.graphQLMutation(e); // generate graphQL query mutation
         if (!n)
             return;
         const r = this;
@@ -80427,6 +80432,7 @@ const M3 = class M3 { // class Transcation
 }
 ;
 M3.nextId = Math.floor(Math.random() * 1e6) + 1;
+/** BaseTransaction */
 let Zo = M3;
 var Ro;
 (function(t) {
@@ -80434,6 +80440,7 @@ var Ro;
     t[t.offlined = 1] = "offlined"
 }
 )(Ro || (Ro = {}));
+/** ArchiveTransaction */
 class m3 extends Zo {
     static async fromSerializedData(e, n, r, s) {
         const i = Me.getModelClass(s.modelClass);
@@ -80502,7 +80509,10 @@ class Tc {
         return this
     }
 }
-class Hu extends Zo { // class CreationTranscation
+/**
+ * CreationTransaction
+ */
+class Hu extends Zo {
     static async fromSerializedData(e, n, r, s) {
         const i = Me.getModelClass(s.modelType);
         if (!i)
@@ -80553,6 +80563,7 @@ class Hu extends Zo { // class CreationTranscation
         this.syncClient.deleteModelAndDependencies(this.model)
     }
 }
+/** DeleteTransaction */
 class g3 extends Zo {
     static async fromSerializedData(e, n, r, s) {
         const i = Me.getModelClass(s.modelClass);
@@ -80610,7 +80621,8 @@ class g3 extends Zo {
     }
 }
 const lce = 8;
-class dce { // class TranscationsExecutor
+/** TransactionExecutor */
+class dce {
     constructor(e, n) {
         this.transactions = e,
         this.graphQLClient = n,
@@ -80627,6 +80639,7 @@ class dce { // class TranscationsExecutor
         try {
             const n = this.transactions.length === 1;
             let r = this.transactions[0].graphQLOperationName;
+            // several transactions
             if (!n) {
                 const d = this.transactions.reduce((u,h)=>{
                     const f = h.graphQLOperationName;
@@ -80642,7 +80655,7 @@ class dce { // class TranscationsExecutor
                 ...u.graphQLMutationPrepared.variables
             }), {})
               , a = `mutation ${r}${s ? `(${s})` : ""} { ${this.transactions.map((d,u)=>(n ? "" : `o${u + 1}:`) + (typeof d == "string" ? d : d.graphQLMutationPrepared.mutationText)).join(", ")} }`
-              , o = await this.graphQLClient.mutate(a, i, { // send the mutation to the database
+              , o = await this.graphQLClient.mutate(a, i, { // IMPORATNT send the mutation to the server
                 logUserErrors: !0
             })
               , l = Object.keys(o).reduce((d,u)=>Math.max(d, o[u].lastSyncId), 0);
@@ -80669,6 +80682,7 @@ class dce { // class TranscationsExecutor
         return this.completionPromise
     }
 }
+/** UnarchiveTransaction */
 class y3 extends Zo {
     static async fromSerializedData(e, n, r, s) {
         const i = Me.getModelClass(s.modelClass);
@@ -80720,6 +80734,7 @@ class y3 extends Zo {
         this.syncClient.archiveModel(this.model)
     }
 }
+/** Update Transaction */
 class zu extends Zo {
     static async fromSerializedData(e, n, r, s) {
         const i = Me.getModelClass(s.modelClass);
@@ -80745,7 +80760,7 @@ class zu extends Zo {
     }
     constructor(e, n, r, s, i) {
         super("update", e, n, r, s),
-        this.changeSnapshot = e.changeSnapshot(),
+        this.changeSnapshot = e.changeSnapshot(), // find out what has been changed
         this.additionalUpdateArgs = i || {}
     }
     transformError(e) {
@@ -80815,7 +80830,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
         this._onTransactionCountChange = new Tt,
         this._onTransactionQueued = new Tt,
         this.dequeueTransaction = new ww,
-        this.batchIndex = 0,
+        this.batchIndex = 0, // LSE may send several transactions in a batch, this batchIndex is for the batches sequence
         this.commitCreatedTransactions = new ww,
         this.handleTimedRecheck = ()=>{
             this.dequeueNextTransactions()
@@ -80824,6 +80839,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
         this.graphQLClient = e,
         this.syncClient = n
     }
+    // CRUD methods to create different kinds of transaction objects.
     create(e, n) {
         const r = new Hu(e,this.batchIndex,this.syncClient,this.graphQLClient,n == null ? void 0 : n.additionalCreationArgs);
         return n != null && n.sendSynchronously ? this.immediatelyExecuteTransaction(r) : this.enqueueTransaction(r),
@@ -80870,11 +80886,13 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
             r != null && r.length && (this.persistedTransactionsEnqueue = this.persistedTransactionsEnqueue.filter(s=>!r.includes(s)))
         }
     }
-    rebaseTransactions(e, n) {
+    rebaseTransactions(e, n) { // `e` for the model to rebase, `n` for the lastSyncId to be rebased on
         var r;
         if (this.lastSyncId = n,
         this.completedButUnsyncedTransactions.length && (this.completedButUnsyncedTransactions = this.completedButUnsyncedTransactions.filter(s=>(s.syncIdNeededForCompletion || 0) > n)),
         (r = this.persistedTransactionsEnqueue) != null && r.length || this.queuedTransactions.length || this.executingTransactions.length || this.completedButUnsyncedTransactions.length) {
+            // This line below actually show the time-sequence of these arrays.
+            // completedButUnsyncedTransactions:
             const s = this.completedButUnsyncedTransactions.concat(this.executingTransactions, this.queuedTransactions, this.persistedTransactionsEnqueue ?? []);
             for (const i of s)
                 i instanceof zu && i.model === e && i.rebase()
@@ -80884,6 +80902,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
         this.database = e;
         const n = await this.database.getAllTransactions();
         F.network(`Loaded ${n.length} persisted transactions`),
+        // The only place to assign `persistedTransactionsEnqueue`
         this.persistedTransactionsEnqueue = (await Promise.all(n.map(async s=>{
             const i = await this.deserialize(s.id, s);
             if (i != null && i.id)
@@ -80947,7 +80966,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
             return
         }
     }
-    async immediatelyExecuteTransaction(e) { // e: for transcation
+    async immediatelyExecuteTransaction(e) {
         const n = new Set;
         this._onTransactionQueued.fire(e);
         let r, s;
@@ -80977,7 +80996,9 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
         this.outstandingTransactionCountChanged()
     }
     async enqueueTransaction(e) {
+        // e is transaction object
         if (e.model.modelClass.loadStrategy === dn.local) {
+            // If this a transaction of a model whose loadStrategy is local, we should immediately change database and complete the transaction
             this.database.writeTransaction({
                 metaStore: !1,
                 syncActionStore: !1
@@ -80994,8 +81015,8 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
             this.batchIndex++;
             const n = this.createdTransactions.concat();
             this.createdTransactions = [],
-            await this.database.putTransactions(n),
-            this.queuedTransactions.push(...n),
+            await this.database.putTransactions(n), // save all queue transactions into database (offline cache)
+            this.queuedTransactions.push(...n), // move createdTransactions to queuedTransactions
             this.outstandingTransactionCountChanged(),
             this.dequeueNextTransactions()
         }
@@ -81003,7 +81024,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
     }
     dequeueNextTransactions() {
         this.dequeueTransaction.schedule(()=>{
-            if (this.queuedTransactions.length === 0 || this.executingTransactions.length >= kw)
+            if (this.queuedTransactions.length === 0 || this.executingTransactions.length >= kw) // max 40 transactions in the queue
                 return;
             let e = 0;
             const n = this.queuedTransactions[0].batchIndex
@@ -81062,6 +81083,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
         return !0
     }
     async executeTransactionBatch(e) {
+        // Send transactions to the backend.
         if (e.length !== 0) {
             this.executingTransactions = this.executingTransactions.concat(e);
             try {
@@ -81073,9 +81095,10 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
                 }
             } catch {}
             for (const n of e)
-                this.executingTransactions.splice(this.executingTransactions.indexOf(n), 1),
-                await this.database.deleteTransaction(n.id),
+                this.executingTransactions.splice(this.executingTransactions.indexOf(n), 1), // remove the transaction from exectuting transactions
+                await this.database.deleteTransaction(n.id), // once the transaction has completed, we could delete it from the database because we won't send it again
                 (!this.lastSyncId || (n.syncIdNeededForCompletion ?? 0) > this.lastSyncId) && this.completedButUnsyncedTransactions.push(n);
+                // The transaction has completed (the backend has accepte the transaction), but the corresponding delta has not yet received
             this.outstandingTransactionCountChanged(),
             this.dequeueNextTransactions()
         }
@@ -82013,6 +82036,12 @@ const vce = be.MINUTE * 2
             this.modelClassToModelLookup[i] = new Set,
             this.modelClassToArchivedModelLookup[i] = new Set,
             this.modelClassToTemporaryModelLookup[i] = new Set;
+
+        // subscribe to socket events
+        // when the user uploaded transaction would also become a delta here
+        // and modify the database
+        // in other word, when user changed something, the new data would not be persisted 
+        // until the transaction is accepted by the server and the delta is sent to local
         this.socket.onSyncMessage.subscribe(async i=>{
             try {
                 await this.applyDelta(i.sync, i.lastSyncId)
@@ -82044,6 +82073,7 @@ const vce = be.MINUTE * 2
         ),
         this.batchModelLoader.setSyncClient(this, this.database)
     }
+    // CRUD methods here to create different transactions for a model.
     add(e, n) {
         if (this.findById(at, e.id, {
             excludeTemporaryModels: !0
@@ -82290,9 +82320,10 @@ const vce = be.MINUTE * 2
         this.subscribedSyncGroups = new Set(a.subscribedSyncGroups);
         try {
             F.network(`Bootstrapping. Last sync id is ${this.lastSyncId}. Backend DB version is ${this.backendDatabaseVersion}`);
-            const u = await this.database.getAllInitialHydratedModelData() // Load the database from local.
+            const u = await this.database.getAllInitialHydratedModelData()
               , h = []
               , f = [];
+            // Construct the models from the fetched data.
             if (xt.trace("startup", "SyncClient.bootstrap.constructModels", ()=>{
                 for (const C of Object.keys(u))
                     for (const b of u[C]) {
@@ -82301,8 +82332,8 @@ const vce = be.MINUTE * 2
                             F.info(`Could not find model class for model type '${b.__modelName}'.`);
                             continue
                         }
-                        const S = new k(!1);
-                        S.id = b.id,
+                        const S = new k(!1); // !: call constructor here!
+                        S.id = b.id, // change the model's id
                         h.push(S),
                         f.push(b)
                     }
@@ -82316,12 +82347,13 @@ const vce = be.MINUTE * 2
             Hi.addStartupSpanTag("models.count", h.length),
             xt.trace("startup", "SyncClient.bootstrap.updateModels", ()=>{
                 for (const b of h)
+                    // write init models into store
                     this.addModelToLiveCollections(b);
                 let C = 0;
                 lt(()=>{
                     for (const b of h)
                         b.updateFromData(f[C++]);
-                    for (const b of h)
+                    for (const b of h) // update referenced models
                         b.attachToReferencedProperties()
                 }
                 )
@@ -82355,7 +82387,7 @@ const vce = be.MINUTE * 2
             await this.startSyncing(a.type),
             this.transactionQueue.confirmPersistedTransactions()) : (this._shouldResetOnError = a.type === Ra.partial,
             X0.onLoadingDone.subscribeOnce(async()=>{
-                await this.database.flush(),
+                await this.database.flush(), // onLoadingDone, flush loaded models into the database
                 await this.startSyncing(a.type),
                 this.transactionQueue.confirmPersistedTransactions(),
                 this._shouldResetOnError = !1
@@ -82684,6 +82716,9 @@ const vce = be.MINUTE * 2
         this.database.setBackendDatabaseVersion(this.backendDatabaseVersion))
     }
     async applyDelta(e, n, r) {
+        // receive delta from the remote server
+        // e for the update events
+        // n for the lastSyncId
         e.length !== 0 && await this.updateLock.runExclusive(async()=>{
             e.length && F.network(`Processing ${e.length} sync packets. Last sync is ${n}`, {
                 updates: e.slice(0, 200)
@@ -82748,11 +82783,14 @@ const vce = be.MINUTE * 2
                     var C;
                     const m = new Map;
                     i.size > 0 && this.addNewSyncGroupsToClient([...i], o, l, m);
+                    // there are two loops of deltas
+                    // why necessary? remains unclear to me
                     for (const b of e)
                         switch (b.action) {
                         case "I":
                         case "V":
                         case "U":
+                            // Instead of sending the changed property, LSE send the whole data to the clients!
                             const k = Me.getModelClass(b.modelName);
                             if (k) {
                                 let D = this.findById(k, b.data.id);
@@ -82761,7 +82799,8 @@ const vce = be.MINUTE * 2
                                 !D) {
                                     let R;
                                     try {
-                                        R = this.createModel(k, b.data)
+                                        R = this.createModel(k, b.data) // or try to create model,
+                                        // if the model already exists, it would set data instead
                                     } catch (T) {
                                         throw F.error("Error creating model from sync packet", T, {
                                             packetId: b.id,
@@ -82793,26 +82832,27 @@ const vce = be.MINUTE * 2
                     for (const b of e)
                         switch (p.shouldApplyRemoval(b) === !0 && p.applyRemovalsToSyncClient(b.id),
                         b.action) {
-                        case "I":
+                        case "I": // Insert
                         case "V":
-                        case "U":
-                        case "C":
+                        case "U": // update?
+                        case "C": 
                             const k = this.findById(at, b.modelId);
                             k && (k.updateFromData(b.data, {
                                 dataContainsAllProperties: b.action !== "C"
                             }),
+                            // rebase the model on lastSyncId
                             this.transactionQueue.rebaseTransactions(k, n));
                             break;
-                        case "A":
+                        case "A": // delete issue is actually archiving it
                             p.scheduleModelRemoval("archival", b.modelName, b.modelId, b.id);
                             break;
-                        case "D":
+                        case "D": // but deleting comment is actually a deletion!
                             p.scheduleModelRemoval("deletion", b.modelName, b.modelId, b.id);
                             break
                         }
                     p.applyRemovalsToSyncClient(((C = e.at(-1)) == null ? void 0 : C.id) || Number.MAX_SAFE_INTEGER),
                     p.reportPerformance(),
-                    this.lastSyncId = Math.max(this.lastSyncId, n),
+                    this.lastSyncId = Math.max(this.lastSyncId, n), // finally update sync id
                     f.setLastSyncId(this.lastSyncId),
                     i.size && (this.setFirstSyncId(this.lastSyncId),
                     f.setFirstSyncId(this.lastSyncId)),
@@ -83860,17 +83900,22 @@ const sg = class sg { // class SyncedStore
     async waitForSync() {
         return await this.syncClient.waitForSync()
     }
-    save(e, n=!1, r) {
-        return this.saveForLocalTransaction(e, r) ? new Tc(e) : (e.shouldSetUpdatedAt && (e.updatedAt = new Date),
+    save(e, n=!1, r) { // Determined what kind of transaction need to be dispatched.
+        // e for the model that changed
+        return this.saveForLocalTransaction(e, r) 
+            ? new Tc(e)  // If it should be a local transaction. It would return from here.
+
+            : (e.shouldSetUpdatedAt && (e.updatedAt = new Date),
         this.syncClient.findById(at, e.id, {
             excludeTemporaryModels: !0
-        }) ? (e.beforeSave(!1),
-        this.syncClient.update(e, r)) : (e.beforeSave(!0),
+        }) ? (e.beforeSave(!1), // nullable false, beforeSave only works for "Document" at the moment
+        this.syncClient.update(e, r)) // generete a UpdateTransaction object
+        : (e.beforeSave(!0), // nullable true
         this.removeTemporarily(e),
         n ? (e.createdAt = new Date,
         e.prepareForAdd(),
         e.observePropertyChanges(),
-        this.syncClient.add(e, r)) : new Tc(e)))
+        this.syncClient.add(e, r)) : new Tc(e))) // a AddTransaction or a LocalTransaction
     }
     addTemporarily(e) {
         return this.syncClient.temporarilyAdd(e)
