@@ -13076,7 +13076,7 @@ const sd = class sd { // class GraphQLClient
             if (b >= 0) {
                 k = C.substring(0, b);
                 const D = C.substring(b + 1);
-                S = JSON.parse(D),
+                S = JSON.parse(D), // deserialize models from streams
                 S.__class || (S.__class = k)
             } else
                 S = JSON.parse(C),
