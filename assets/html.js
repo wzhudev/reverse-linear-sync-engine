@@ -32346,9 +32346,9 @@ const Bc = {
           , d = "linear_" + $1(`${n}_fake_token__${i}${l ? `_${l}` : ""}`)
           , u = $1(`
       ${r}_${Bc.indexVersion}_${Bc.partialObjectStoreSchemaVersion}_${Bc.syncActionStoreVersion}`)
-          , h = (await this.databases()).find(p=>p.name === d);
+          , h = (await this.databases()).find(p=>p.name === d); // read if there is a database with the same name from indexDB
         let f = h && Number(h == null ? void 0 : h.schemaVersion) || 1; // schemaVersion starts with 1
-        return h && h.schemaHash !== u && f++, // if the schema mismatches, we increment the schemaVersion
+        return h && h.schemaHash !== u && f++, // if the schema mismatches, we increment the schemaVersion, and use it to trigger a migration of indexDB
         {
             name: d,
             createdAt: Date.now(),
@@ -79813,7 +79813,7 @@ const eg = class eg { // class: Database
         let s = !1;
         try {
             this.database = await p_(this.name, r.schemaVersion, {
-                // when the schemaVersion changes, or there's no database, the upgrade callback
+                // when the schemaVersion changes, or there's no database with name `this.name`, the upgrade callback
                 // would be called to creat the database
                 upgrade: (i,a,o,l)=>{
                     // i for the new datasbase
@@ -79859,7 +79859,7 @@ const eg = class eg { // class: Database
             throw i
         }
         this.metadata = await this.getMetadata(s),
-        await this.storeManager.checkReadinessOfStores(this.database),
+        await this.storeManager.checkReadinessOfStores(this.database), // check if stores are ready
         Xn.cleanOutdatedDatabases(e.userId, r.version, r.userVersion),
         hs || Xn.deleteOutdatedDemoDatabases()
     }
