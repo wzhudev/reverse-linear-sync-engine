@@ -14,7 +14,7 @@ function __vite__mapDeps(indexes) {
 }
 "use client";
 import {_ as KE, i as kf, s as Gi, a as YE, b as QE, c as xf, d as XE, m as xk, n as Df, o as Ic, t as T3, e as JE, f as Sf, g as eA, h as tA, j as nA, k as rA, l as sA, p as iA, q as Dk, r as Yo, u as n5, v as aA, w as _f, x as q7, y as oA, z as cA, A as lA, B as Sk, C as dA, D as _k, E as uA, F as ug, G as hA, W as fA, H as pA, I as mA, J as gA, K as yA, L as CA, M as bA, N as vA, O as wA} from "./nivo.hash-3DLvEEek.js";
-import {a as Cn, f as Fi, h as hg, i as Ik, k as Mr, s as hl, l as f2, m as $n, p as dd, n as Do, o as kA, w as xA, R as DA, q as SA, v as ut, x as Le, y as F2, z as ms, A as _A, B as IA, C as EA, D as AA, E as jA, F as fg, G as MA, H as TA, I as pg, J as LA, K as OA, L as O1, r as y, M as lt, N as Ln, O as ae, Q as Qt, S as Ek, T as $a, j as c, u as If, b as r5, U as L3, V as RA, W as PA, e as Ak, X as jk, Y as Pt, Z as $A, _ as rn, c as FA, $ as Kd, a0 as Ef, a1 as fo, a2 as mg, a3 as gg, a4 as Dd, a5 as s5, a6 as _s, a7 as NA, a8 as n0, a9 as VA, aa as BA, ab as Sd, ac as UA, ad as HA, ae as Mk, af as Sa, ag as pi, ah as N2, ai as zA, aj as ZA, ak as Af, al as p2, am as Tk, an as r0, ao as jf, ap as oc, aq as ps, ar as yg, as as xu, at as qA, au as Cg, av as WA, aw as GA, ax as Zc, ay as Rs, az as vr, aA as O3, aB as Fr, aC as KA, aD as Ws, aE as Lk, aF as YA, aG as QA, aH as fr, aI as Mf, aJ as XA, aK as bg, aL as JA, aM as ej, aN as Ts, aO as zh, aP as s0, aQ as R3, aR as tj, aS as nj, aT as W7, aU as Zh, aV as vg, aW as rj, aX as sj, aY as Ok, aZ as Rk, a_ as Tf, a$ as P3, b0 as ij, b1 as Pk, b2 as $k, b3 as Fk, b4 as aj, b5 as oj, b6 as cj, b7 as lj, b8 as dj, b9 as uj, ba as hj, bb as fj, bc as $3, bd as F3, be as pj, bf as mj, bg as gj} from "./vendor-core.hash-TqyN1mH4.js";
+import {a as Cn, f as Fi, h as hg, i as Ik, k as Mr, s as hl, l as f2, m as $n, p as dd, n as Do, o as kA, w as xA, R as DA, q as SA, v as ut, x as Le, y as F2, z as ms, A as _A, B as IA, C as EA, D as AA, E as jA, F as fg, G as MA, H as TA, I as pg, J as LA, K as OA, L as O1, r as y, M as lt, N as Ln /** Ln is `makeObservable` of mobX  */, O as ae, Q as Qt, S as Ek, T as $a, j as c, u as If, b as r5, U as L3, V as RA, W as PA, e as Ak, X as jk, Y as Pt, Z as $A, _ as rn, c as FA, $ as Kd, a0 as Ef, a1 as fo, a2 as mg, a3 as gg, a4 as Dd, a5 as s5, a6 as _s, a7 as NA, a8 as n0, a9 as VA, aa as BA, ab as Sd, ac as UA, ad as HA, ae as Mk, af as Sa, ag as pi, ah as N2, ai as zA, aj as ZA, ak as Af, al as p2, am as Tk, an as r0, ao as jf, ap as oc, aq as ps, ar as yg, as as xu, at as qA, au as Cg, av as WA, aw as GA, ax as Zc, ay as Rs, az as vr, aA as O3, aB as Fr, aC as KA, aD as Ws, aE as Lk, aF as YA, aG as QA, aH as fr, aI as Mf, aJ as XA, aK as bg, aL as JA, aM as ej, aN as Ts, aO as zh, aP as s0, aQ as R3, aR as tj, aS as nj, aT as W7, aU as Zh, aV as vg, aW as rj, aX as sj, aY as Ok, aZ as Rk, a_ as Tf, a$ as P3, b0 as ij, b1 as Pk, b2 as $k, b3 as Fk, b4 as aj, b5 as oj, b6 as cj, b7 as lj, b8 as dj, b9 as uj, ba as hj, bb as fj, bc as $3, bd as F3, be as pj, bf as mj, bg as gj} from "./vendor-core.hash-TqyN1mH4.js";
 import {t as yj, S as Cj, N as Nk, M as bj, a as vj, b as wj, P as Lf, c as kj, d as O5, F as R5, T as xj} from "./prosemirror.hash-DzHTrBWt.js";
 (function() {
     const e = document.createElement("link").relList;
@@ -7091,7 +7091,7 @@ const rr = class rr {
         delete this.modelCascadeHydrationKeys[n.name]),
         
         this.modelPropertyHashLookup[e] = r, // modelName -> modelHash
-        rr._schemaHash = $1(rr._schemaHash + r) // all models' hashes become a hash too, the global hash
+        rr._schemaHash = $1(rr._schemaHash + r) // 
         // the hash would be used to detect if there is a database migration
     }
     static registerProperty(e, n, r) {
@@ -8860,7 +8860,9 @@ const as = class as { // basic data model class
     }
     makeObservable() {
         this.madeObservable || (this.madeObservable = !0,
+        // Make these properties observable.
         Ln(this, {
+            // actions & computed
             ...Me.observableAnnotationsOfModel(this.modelName),
             hydrated: ut,
             setHydrated: Le
@@ -32832,9 +32834,15 @@ function j4(t, e, n, r, s) { // lazy references helper function
     // register lazy reference property
     Me.registerProperty(t.constructor.name, i, u)
 }
-function M1(t, e, n, r) { // the helper function to make a property observable
-    // `t` for the model's prorotype, `e` for the property's name, 
-    // `n` for deep observation, `r` for deseralizer
+/**
+ * the helper function to make a property observable. and also plays
+ * an important role when updating properties of a model
+ */
+function M1(t, e, n, r) {
+    // `t` for the model's prorotype, 
+    // `e` for the property's name, 
+    // `n` for deep observation, 
+    // `r` for deseralizer
     const s = e + "_o" // key for observable value, 
       , i = e + "_v" // key for the plain value
       , a = e + "_d"; // key for the deserializer
@@ -79806,7 +79814,7 @@ const eg = class eg { // class: Database
         try {
             this.database = await p_(this.name, r.schemaVersion, {
                 // when the schemaVersion changes, or there's no database, the upgrade callback
-                // would be called
+                // would be called to creat the database
                 upgrade: (i,a,o,l)=>{
                     // i for the new datasbase
                     // l for the old database
@@ -79815,6 +79823,7 @@ const eg = class eg { // class: Database
                     }),
                     F.network(`Upgrading database ${this.name}`),
                     s = !0,
+                    // let stores to create tables
                     this.storeManager.createStores(i, l)
                 }
                 ,
