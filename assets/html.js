@@ -7048,6 +7048,9 @@ function OO(t) {
         }
     }
 }
+
+// #region ModelRegistry
+
 const rr = class rr {
     static get schemaHash() {
         return rr._schemaHash
@@ -7157,6 +7160,14 @@ const rr = class rr {
             this.modelDataPropertyLookup[e] = {};
             for (const n in this.modelPropertyLookup[e]) {
                 const r = this.modelPropertyLookup[e][n];
+    // t[t.property = 0] = "property", // for a self-owned property, e.g. issue.title
+    // t[t.ephemeralProperty = 1] = "ephemeralProperty",
+    // t[t.reference = 2] = "reference", // for reference target's id, e.g. issue.documentContentId
+    // t[t.referencedModel = 3] = "referencedModel", //  for reference target, e.g. issue.documentContent
+    // t[t.referenceCollection = 4] = "referenceCollection",
+    // t[t.backReference = 5] = "backReference", // for back reference, e.g. documentContent.issue
+    // t[t.referenceArray = 6] = "referenceArray"
+                // filtered all non-reference properties
                 (r.type === void 0 || r.type === 0 || r.type === 1 || r.type === 2 || r.type === 6) && (this.modelDataPropertyLookup[e][n] = r)
             }
         }
@@ -7293,7 +7304,7 @@ var vn; // different types of properties
     t[t.referencedModel = 3] = "referencedModel", //  for reference target, e.g. issue.documentContent
     t[t.referenceCollection = 4] = "referenceCollection",
     t[t.backReference = 5] = "backReference", // for back reference, e.g. documentContent.issue
-    t[t.referenceArray = 6] = "referenceArray"
+    t[t.referenceArray = 6] = "referenceArray" // like reference, but in an array
 }
 )(vn || (vn = {}));
 var dn; // load strategies
@@ -7312,6 +7323,9 @@ var ki; // bootstrap strategies
     t[t.lowPriority = 3] = "lowPriority"
 }
 )(ki || (ki = {}));
+
+// #endregion
+
 class Jt extends Promise {
     constructor(e) {
         if (typeof e == "function") {
@@ -7542,7 +7556,8 @@ class E1 { // base class of ReferenceCollection
         this._invalidateRejectedWhenRequestedSubscribed = !1
     }
 }
-class Tt {
+/** Signal */
+class Tt { // a in-house rxjs?
     get hasAutoFired() {
         return this.hasAutoFireData
     }
@@ -8356,6 +8371,9 @@ class ky {
         await Promise.all(l)
     }
 }
+
+// #region BaseModel
+
 const as = class as { // basic data model class
     static get constructorName() {
         return this.modelName
@@ -8429,7 +8447,7 @@ const as = class as { // basic data model class
         if (this.dependenciesRequireLoading = !1,
         this.hydrated = !1,
         this.__mobx = {},
-        this.modifiedProperties = {},
+        this.modifiedProperties = {}, // store what property has been changed on this model
         this.madeObservable = !1,
         this.observingPropertyChanges = !1,
         this.ignoreUpdates = !1,
@@ -8558,7 +8576,7 @@ const as = class as { // basic data model class
             changes: e
         }
     }
-    clearSnapshot() {
+    clearSnapshot() { 
         this.modifiedProperties = {}
     }
     clone(e) {
@@ -8601,7 +8619,11 @@ const as = class as { // basic data model class
         }
         )
     }
-    updateFromData(e, n) { // would be called when the client receives deltas from the server
+    /**
+     * Dump values from a plain object to a model. This would be called when the client receives deltas from the server,
+     * or the model is constructed when bootstrapping (and many other circustances).
+     */
+    updateFromData(e, n) {
         var s;
         this.ignoreUpdates = !0; // mark we are catching remote changes, all updates from setters would be ignored!
         const r = Me.propertiesOfModel(this.modelName);
@@ -8704,7 +8726,7 @@ const as = class as { // basic data model class
         this.observingPropertyChanges || (this.observingPropertyChanges = !0,
         this.makeObservable())
     }
-    hydrate(e) {
+    hydrate(e) { // the method to hydrate a model
         var a;
         if (this.hydrationPromise && (!this.isHydrationPromiseLocalOnly || e != null && e.onlyIfLocallyAvailable))
             return this.hydrationPromise;
@@ -8883,7 +8905,7 @@ const as = class as { // basic data model class
         }
     }
     updateReferencedModels(e) {
-        const n = Me.referencedPropertiesOfModel(this.modelName);
+        const n = Me.referencedPropertiesOfModel(this.modelName); // type 2 reference and type 6 refernce array
         for (const r in n) {
             const s = n[r];
             if (!s)
@@ -8939,7 +8961,7 @@ as.usedForPartialIndexes = !1,
 as.loadStrategy = dn.instant,
 as.partialLoadMode = ki.regular;
 let at = as;
-class si extends at { // si === Archivable model
+class si extends at { // archiveable model
     archive() {
         return this.archivedAt = new Date,
         this.store.archive(this)
@@ -8948,7 +8970,7 @@ class si extends at { // si === Archivable model
         return this.store.unarchive(this)
     }
 }
-class It extends si {
+class It extends si { // deletable-model, some model could only be archvied
     delete(e) {
         return lt(()=>{
             var n;
@@ -8965,11 +8987,14 @@ class It extends si {
         return this._onDelete
     }
 }
-class Xc extends si {
+class Xc extends si { // trash-able model
     trash() {
         return lt(()=>this.store.trash(this))
     }
 }
+
+// #endregion
+
 const VO = ()=>{
     const t = self.document.createElement("div");
     t.setAttribute("style", "width: 30px; height: 30px; overflow: auto;"),
@@ -32335,6 +32360,7 @@ const Bc = {
     syncActionStoreVersion: 1
 }
   , kb = "linear_databases"
+  // #region DatabaseManager
   , jn = class jn { // DatabaseManager
     static async databaseInfo(e) {
         const {userId: n, modelSchemaHash: r, minVersion: s} = e;
@@ -32496,6 +32522,7 @@ const Bc = {
 }
 ;
 jn.constructorName = "DatabaseManager",
+// #endregion
 jn.deletingDatabase = !1;
 let Xn = jn;
 const t2 = ke.get("databaseVersionOverrides", {
@@ -32504,6 +32531,9 @@ const t2 = ke.get("databaseVersionOverrides", {
 if (t2 && t2.models)
     for (const t in t2.models)
         Bc.models[t] = t2.models[t];
+
+// #region Decorators
+
 /**
  * Action decorator
  */
@@ -32880,6 +32910,9 @@ function M1(t, e, n, r) {
         configurable: !0
     })
 }
+
+// #endregion
+
 const eY = { // some special properties?
     Comment_1_issueId: !0,
     IssueHistory_1_issueId: !0,
@@ -79720,6 +79753,7 @@ function Gn(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
+// #region Database
 const eg = class eg { // class: Database
     get onDatabaseUnavailable() {
         return this._onDatabaseUnavailable
@@ -80205,6 +80239,7 @@ const eg = class eg { // class: Database
             for (const d of n.modelsToLoad)
                 l[d] || (l[d] = []);
             r = o.syncDeltaPackets;
+            // Each type of model would be cached into the store manager.
             for (const d in l)
                 this.storeManager.setModelData(d, l[d] ?? []);
             this.metadata.backendDatabaseVersion = o.databaseVersion,
@@ -80286,6 +80321,7 @@ const eg = class eg { // class: Database
 }
 ;
 eg.constructorName = "Database";
+// #endregion
 let xn = eg;
 Gn([xt.trace("database")], xn.prototype, "open", null);
 Gn([xt.trace("database")], xn.prototype, "close", null);
@@ -80384,6 +80420,8 @@ class ww {
         ))
     }
 }
+
+// # region Transactions
 /** Base Transaction */
 const M3 = class M3 {
     constructor(e, n, r, s, i) {
@@ -80744,7 +80782,7 @@ class y3 extends Zo {
     }
 }
 /** Update Transaction */
-class zu extends Zo {
+class zu extends Zo { // update transaction
     static async fromSerializedData(e, n, r, s) {
         const i = Me.getModelClass(s.modelClass);
         if (!i)
@@ -80816,12 +80854,17 @@ class zu extends Zo {
             for (const n in this.changeSnapshot.changes)
                 e[n] = this.changeSnapshot.changes[n].original;
             lt(()=>{
-                this.model.updateFromData(e)
+                this.model.updateFromData(e) // dump old values into the model when rollback
             }
             )
         }
     }
 }
+
+// #endregion
+
+// #region TransactionQueue
+
 const kw = 40
   , xw = 9e6;
 class uce { // class TranscactionQueue, like collaborative ediring controller in OT
@@ -81117,6 +81160,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
         this.queuedTransactions.length || this.executingTransactions.length ? this.checkInterval || (this.checkInterval = window.setInterval(this.handleTimedRecheck, 2e3)) : this.checkInterval && window.clearTimeout(this.checkInterval)
     }
 }
+// #endregion
 const Dw = 1e3;
 class OE {
     wait(e) {
@@ -81869,6 +81913,7 @@ function bm(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
+// #region SyncClient
 const vce = be.MINUTE * 2
   , wce = be.MINUTE * 4
   , ng = class ng { // class SyncClient
@@ -81915,6 +81960,7 @@ const vce = be.MINUTE * 2
         return this._shouldResetOnError
     }
     constructor(e, n, r, s) {
+        // Each model maps to a set.
         this.modelClassToModelLookup = {},
         this._onInitialModelsLoaded = new Tt,
         this._onDatabaseVersionChange = new Tt,
@@ -81931,7 +81977,7 @@ const vce = be.MINUTE * 2
         this._shouldResetOnError = !1,
         this.lastSyncId = 0,
         this.backendDatabaseVersion = 0,
-        this.modelLookup = {}, // the dictionary maps a model's id to the object! It is the object pool.
+        this.modelLookup = {}, // the dictionary maps a model's id to the object! It is the "object pool".
         this.temporaryModelLookup = {},
         this.archivedModelLookup = {},
         this.modelClassToArchivedModelLookup = {},
@@ -82341,8 +82387,8 @@ const vce = be.MINUTE * 2
                             F.info(`Could not find model class for model type '${b.__modelName}'.`);
                             continue
                         }
-                        const S = new k(!1); // !: call constructor here!
-                        S.id = b.id, // change the model's id
+                        const S = new k(!1); // the models' constructors would be called here
+                        S.id = b.id, // change the model's id, the model's properties and references would be set later
                         h.push(S),
                         f.push(b)
                     }
@@ -82707,7 +82753,7 @@ const vce = be.MINUTE * 2
         s.isArchived ? this.addModelToArchiveCollections(s) : this.addModelToLiveCollections(s),
         s
     }
-    addModelToLiveCollections(e) {
+    addModelToLiveCollections(e) { // add model to the ObjectPool
         this.removeModelFromArchiveCollections(e),
         this.modelLookup[e.id] || (this.modelLookup[e.id] = e,
         this.modelClassToModelLookup[e.modelName].add(e))
@@ -83023,6 +83069,7 @@ const vce = be.MINUTE * 2
 }
 ;
 ng.constructorName = "SyncClient";
+// #endregion
 let Wd = ng;
 bm([xt.trace("startup")], Wd.prototype, "startSyncing", null);
 bm([xt.trace("startup")], Wd.prototype, "fetchDelta", null);
@@ -83721,6 +83768,7 @@ class vm {
         _r.unregisterReportEvaluationFnc(this.reportEvaluation)
     }
 }
+// #region SyncedStore
 const sg = class sg { // class SyncedStore
     get socketStatus() {
         return this.socket.status
@@ -84012,6 +84060,7 @@ const sg = class sg { // class SyncedStore
 ;
 sg.constructorName = "SyncedStore";
 let hf = sg;
+// #endregion
 var u1;
 (function(t) {
     t[t.initial = 0] = "initial",
