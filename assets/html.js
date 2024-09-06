@@ -79754,6 +79754,7 @@ function Gn(t, e, n, r) {
     i
 }
 // #region Database
+/** Database */
 const eg = class eg { // class: Database
     get onDatabaseUnavailable() {
         return this._onDatabaseUnavailable
@@ -80055,6 +80056,7 @@ const eg = class eg { // class: Database
         if (!e)
             throw new Error("Trying to access closed database");
         const n = Me.getModelNames(dn.instant)
+          // read models that should be load instantly from the local database
           , r = n.map(o=>this.storeManager.objectStore(o).getAll(e))
           , s = await Promise.all(r).catch(o=>this.handleReadError({
             error: o,
@@ -80321,8 +80323,9 @@ const eg = class eg { // class: Database
 }
 ;
 eg.constructorName = "Database";
-// #endregion
+/** Database */
 let xn = eg;
+// #endregion
 Gn([xt.trace("database")], xn.prototype, "open", null);
 Gn([xt.trace("database")], xn.prototype, "close", null);
 Gn([xt.trace("database")], xn.prototype, "writeTransaction", null);
@@ -80421,7 +80424,7 @@ class ww {
     }
 }
 
-// # region Transactions
+// #region Transactions
 /** Base Transaction */
 const M3 = class M3 {
     constructor(e, n, r, s, i) {
@@ -81916,6 +81919,7 @@ function bm(t, e, n, r) {
 // #region SyncClient
 const vce = be.MINUTE * 2
   , wce = be.MINUTE * 4
+  /** SyncClient */
   , ng = class ng { // class SyncClient
     get onInitialModelsLoaded() {
         return this._onInitialModelsLoaded
@@ -82407,7 +82411,7 @@ const vce = be.MINUTE * 2
                 let C = 0;
                 lt(()=>{
                     for (const b of h)
-                        b.updateFromData(f[C++]);
+                        b.updateFromData(f[C++]); // dump
                     for (const b of h) // update referenced models
                         b.attachToReferencedProperties()
                 }
@@ -83070,6 +83074,7 @@ const vce = be.MINUTE * 2
 ;
 ng.constructorName = "SyncClient";
 // #endregion
+/** SyncClient */
 let Wd = ng;
 bm([xt.trace("startup")], Wd.prototype, "startSyncing", null);
 bm([xt.trace("startup")], Wd.prototype, "fetchDelta", null);
