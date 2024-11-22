@@ -1,3 +1,6 @@
+> [!NOTE]
+> Still a work in progress!
+
 # A Reverse Study of Linear's Sync Engine
 
 I work on collaborative software, primarily rich text editors and spreadsheets. The **collaborative engines**, also known as **data sync engines**, in these applications enhance user experience by enabling real-time, simultaneous edits on the same file, and offering features like offline availability and file history. Earlier this year, our team at [Univer](https://www.univer.ai/) developed a [collaborative engine](https://www.univer.ai/blog/post/ot) from the ground up, supporting various document types including documents, spreadsheets, and (in the near future) slides. It also has offline features, permission controls, and file history. Everything looks great.
