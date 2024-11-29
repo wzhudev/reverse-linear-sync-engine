@@ -7070,12 +7070,12 @@ const rr = class rr {
     static getClassName(e) {
         return e.prototype.modelName
     }
-    static registerModel(e, n, r) { // e for model name, n for the constructor, r for the hash
-        this.modelLookup[e] = n, // modelName -> modelConstructor
-        n.prototype.modelName = e, // hey, this line has been set before!
+    static registerModel(e, n, r) { // e for model name, n for the constructor, r for the hash.
+        this.modelLookup[e] = n, // Map model's name to the constructor.
+        n.prototype.modelName = e, // Hey, this line has been set before! Do we find a duplication here?
 
-        // when the properties is registered, it may get bound to the constructor's name, the name maybe minified in production
-        // code, we we need to reassign them
+        // When the properties are registered, they may are bound to the constructor's name. The name may get minified in production
+        // code, we we need to move the property metadata.
         n.name !== e && (this.modelPropertyLookup[e] = this.modelPropertyLookup[n.name], 
         delete this.modelPropertyLookup[n.name],
         this.modelActionLookup[e] = this.modelActionLookup[n.name],
@@ -7093,9 +7093,8 @@ const rr = class rr {
         this.modelCascadeHydrationKeys[e] = this.modelCascadeHydrationKeys[n.name],
         delete this.modelCascadeHydrationKeys[n.name]),
         
-        this.modelPropertyHashLookup[e] = r, // modelName -> modelHash
-        rr._schemaHash = $1(rr._schemaHash + r) // 
-        // the hash would be used to detect if there is a database migration
+        this.modelPropertyHashLookup[e] = r, // Map model's name to the hash.
+        rr._schemaHash = $1(rr._schemaHash + r) // The model's hash is added to the schema hash.
     }
     static registerProperty(e, n, r) {
         // e for model name
@@ -7127,11 +7126,11 @@ const rr = class rr {
             const i = this.modelReferencedPropertyLookup[e];
             i ? i[n] = r : (this.modelReferencedPropertyLookup[e] = {},
             this.modelReferencedPropertyLookup[e][n] = r)
-            // for reference properties, the configuration registered here
-            // would be used to get reference values
+            // For reference properties, the configuration registered here
+            // would be used to get reference values.
         }
 
-        if (r.lazy)
+        if (r.lazy) // If a reference is lazy, it would be loaded when it is accessed.
             if (r.type === 4) { // reference collection
                 const i = this.modelLazyCollectionKeys[e];
                 i ? i.push(n) : this.modelLazyCollectionKeys[e] = [n]
@@ -7139,7 +7138,7 @@ const rr = class rr {
                 const i = this.modelLazyReferenceKeys[e];
                 i ? i.push(n) : this.modelLazyReferenceKeys[e] = [n]
             }
-        if (r.cascadeHydration) { // if should cascade hydration
+        if (r.cascadeHydration) { // If should cascade hydration.
             const i = this.modelCascadeHydrationKeys[e];
             i ? i.push(n) : this.modelCascadeHydrationKeys[e] = [n]
         }
@@ -7316,7 +7315,7 @@ var dn; // load strategies
     t[t.local = 5] = "local"
 }
 )(dn || (dn = {}));
-var ki; // bootstrap strategies
+var ki; // `partialLoadMode` bootstrap strategies
 (function(t) {
     t[t.full = 1] = "full",
     t[t.regular = 2] = "regular",
@@ -7534,7 +7533,7 @@ class E1 { // base class of ReferenceCollection
                 return n();
             const s = [];
             for (const i of this.elements)
-                i.isHydrated() || s.push(i.hydrate());
+                i.isHydrated() || s.push(i.hydrate()); // Call hypdate() for each element that is not hydrated.
             s.length ? Jt.allResolved(s).then(n).catch(i=>{
                 this.invalidateRejectedWhenRequested(),
                 r(i)
@@ -7910,7 +7909,17 @@ function Tx(t) {
 }
 const Ku = class Ku {
     static createPartialIndexValue(e, n) {
-        return typeof e == "string" ? e.split(".").at(-1) === "teamId" ? n : `${e}-${n}` : "id"in e ? e.id : "indexedKey"in e ? this.createPartialIndexValue(e.indexedKey, e.keyValue.toString()) : "syncGroup"in e ? this.createPartialIndexValue("teamId", e.syncGroup) : this.FULLY_LOADED_INDEX_NAME
+        return typeof e == "string" 
+            ? e.split(".").at(-1) === "teamId" 
+                ? n 
+                : `${e}-${n}` 
+            : "id"in e 
+                ? e.id 
+                : "indexedKey"in e 
+                    ? this.createPartialIndexValue(e.indexedKey, e.keyValue.toString()) 
+                    : "syncGroup"in e 
+                        ? this.createPartialIndexValue("teamId", e.syncGroup) 
+                        : this.FULLY_LOADED_INDEX_NAME
     }
     static resolveCoveringPartialIndexValues(e, n, r) {
         const s = this.partialIndexInfoForModel(e.modelName).map(a=>a.path)
@@ -8009,7 +8018,7 @@ class Ed extends Error {
 /**
  * LazyReferenceCollectionImpl
  */
-class Et extends te { // LazyReference
+class Et extends te { // LazyReferenceCollection
     get elements() {
         return this.isHydrated() || this.hydrate(),
         super.elements
@@ -8049,7 +8058,7 @@ class Et extends te { // LazyReference
     async isLocallyAvailable() {
         return this.isHydrated() ? !0 : at.store.syncClient.hasModelsForPartialIndexValues(this.modelClass.modelName, this.getCoveringPartialIndexValues())
     }
-    hydrate(e) { // hydrate a lazy reference
+    hydrate(e) { // Hydrate a lazy reference.
         var s, i, a, o;
         if (this.hydrationPromise && (!this.isHydrationPromiseLocalOnly || e != null && e.onlyIfLocallyAvailable))
             return this.hydrationPromise;
@@ -8199,9 +8208,9 @@ const Sm = class Sm {
 }
 ;
 wy = G2.identifier;
-let A1 = Sm;
+let A1 = Sm; // The base class of LazyReference and LazyBackReference
 Lx([ut], A1.prototype, "_value", void 0);
-class Qn extends A1 { // BackReference
+class Qn extends A1 { // LazyReference
     static wrap(e) {
         return new FO(e)
     }
@@ -8231,10 +8240,12 @@ class Qn extends A1 { // BackReference
         e && (this._id = e.id)
     }
     hydrate(e) {
-        return this.isHydrationPromiseLocalOnly && (e == null ? void 0 : e.onlyIfLocallyAvailable) !== !0 && (this.hydrationPromise = void 0),
+        return this.isHydrationPromiseLocalOnly 
+            && (e == null ? void 0 : e.onlyIfLocallyAvailable) !== !0 
+            && (this.hydrationPromise = void 0),
         this.hydrationPromise ? this.hydrationPromise : (this.isHydrationPromiseLocalOnly = (e == null ? void 0 : e.onlyIfLocallyAvailable) === !0,
         this.hydrationPromise = new Jt(async(n,r)=>{
-            await at.store.hydrateModel(this.referencedClass, {
+            await at.store.hydrateModel(this.referencedClass, { // It actually call ObjectStore.hydrateModel to load a reference.
                 id: this._id
             }, e).then(Le(s=>{
                 s && (this.isHydrationPromiseLocalOnly = !1),
@@ -8256,7 +8267,7 @@ class Qn extends A1 { // BackReference
     }
 }
 Lx([ut], Qn.prototype, "_id", void 0);
-class Lu extends A1 {
+class Lu extends A1 { // LazyBackReference
     static wrap(e) {
         return new NO(e)
     }
@@ -8443,7 +8454,7 @@ const as = class as { // basic data model class
     get applyingNetworkChanges() {
         return this.ignoreUpdates
     }
-    constructor(e=!0) {
+    constructor(e=!0) { // the constructor of all model
         if (this.dependenciesRequireLoading = !1,
         this.hydrated = !1,
         this.__mobx = {},
@@ -8625,7 +8636,7 @@ const as = class as { // basic data model class
      */
     updateFromData(e, n) {
         var s;
-        this.ignoreUpdates = !0; // mark we are catching remote changes, all updates from setters would be ignored!
+        this.ignoreUpdates = !0; // Mark we are catching remote changes, all updates from setters would be ignored!
         const r = Me.propertiesOfModel(this.modelName);
         for (const i in e)
             this.setSerializedValue(i, e[i], r[i]);
@@ -8690,16 +8701,16 @@ const as = class as { // basic data model class
     get filterMatchValue() {
         return this.id
     }
-    updateRelation(e, n, r=!0) {
+    updateRelation(e, n, r=!0) { // r === true for build reference, r === false to remove reference
         var o, l;
         if (r && !this.isArchived && e.isArchived || !r && this.isArchived && e.isArchived || this.isInDifferentLocalTransaction(e))
             return;
         const s = this.properties[n]
           , a = (s == null ? void 0 : s.type) === vn.referenceCollection && this[n];
-        if (a instanceof te)
+        if (a instanceof te) // Update ReferenceCollection
             r ? a.add(e) : a.remove(e);
         else if (r)
-            this[n] = e;
+            this[n] = e; // Or simply change reference
         else {
             if (s || F.error("Trying to detach a non-existing property", void 0, {
                 property: n,
@@ -8726,19 +8737,19 @@ const as = class as { // basic data model class
         this.observingPropertyChanges || (this.observingPropertyChanges = !0,
         this.makeObservable())
     }
-    hydrate(e) { // the method to hydrate a model
+    hydrate(e) { // To hydrate a model.
         var a;
         if (this.hydrationPromise && (!this.isHydrationPromiseLocalOnly || e != null && e.onlyIfLocallyAvailable))
             return this.hydrationPromise;
-        if (!this.persisted)
+        if (!this.persisted) // Temporary models will not be hydrated.
             return this.setHydrated(),
-            new Jt(this);
-        const n = [];
+            new Jt(this); // Return self in a Promise.
+        const n = []; // All micro tasks to hydrate properties.
         let r = !1;
         const s = Me.propertiesOfModel(this.modelName);
         for (const o of Me.lazyCollectionKeysOfModel(this.modelName)) {
             const l = this[o];
-            if (l instanceof Et && !l.isHydrated()) {
+            if (l instanceof Et && !l.isHydrated()) { // LazyReferenceCollection
                 const d = l.hydrate(e);
                 n.push(d),
                 l.modelClass.isPartiallyLoaded && (r = !0)
@@ -8747,17 +8758,17 @@ const as = class as { // basic data model class
         for (const o of Me.lazyReferenceKeysOfModel(this.modelName)) {
             const l = s[o]
               , d = this[o];
-            d instanceof A1 && !d.isHydrated() && (n.push(d.hydrate(e)),
+            d instanceof A1 && !d.isHydrated() && (n.push(d.hydrate(e)), // Hydrate lazy references and lazy back referencies
             (a = l.referencedClassResolver) != null && a.call(l).isPartiallyLoaded ? r = !0 : l.referencedClassResolver || (r = !0))
         }
         const i = Me.cascadeHydrationKeysOfModel(this.modelName);
-        if (i)
+        if (i) // Some references may need to be hydrated cascadely as well.
             for (const o of i) {
                 const l = this[o];
                 if (l instanceof as && l.isHydrated() === !1) {
                     const d = l.hydrate(e);
                     n.push(d)
-                } else if (l instanceof te) {
+                } else if (l instanceof te) { // ReferenceCollection.
                     const d = l.hydrateElements();
                     d.isPending && n.push(d)
                 }
@@ -8904,15 +8915,15 @@ const as = class as { // basic data model class
             return s.serializer === Yi && typeof n == "string" ? Yi.deserialize(n) : n
         }
     }
-    updateReferencedModels(e) {
-        const n = Me.referencedPropertiesOfModel(this.modelName); // type 2 reference and type 6 refernce array
+    updateReferencedModels(e) { // Update references of a model.
+        const n = Me.referencedPropertiesOfModel(this.modelName); 
         for (const r in n) {
             const s = n[r];
             if (!s)
                 continue;
             const i = this[r]
               , a = i instanceof as ? i.id : i;
-            if (!(!a || !s.referencedProperty))
+            if (!(!a || !s.referencedProperty)) // if (a && s.referencedProperty)
                 if (Array.isArray(a))
                     for (const o of a)
                         this.updateReferencedModel(o, s.referencedProperty, e);
@@ -8921,7 +8932,7 @@ const as = class as { // basic data model class
         }
     }
     updateReferencedModel(e, n, r) {
-        const s = this.store.syncClient.getModel(e);
+        const s = this.store.syncClient.getModel(e); // s is for the referenced model, this for the referencing model
         s ? s.updateRelation(this, n, r) : r && this.store.delayedRelationManager.addDelayedRelation(this, e)
     }
     isInDifferentLocalTransaction(e) {
@@ -13026,6 +13037,7 @@ const sd = class sd { // class GraphQLClient
                 metadata: o
             }
         } catch (i) {
+            // Retry in catch.
             if (this.isModelsCountMismatchError(i) && r < 2)
                 return await Na(be.SECOND),
                 await this.restModelsJsonStream(e, n, r + 1);
@@ -13041,7 +13053,7 @@ const sd = class sd { // class GraphQLClient
     setFirstSyncId(e) {
         this._firstSyncId = e
     }
-    async*restModelsJsonStreamGen(e, n, r) {
+    async*restModelsJsonStreamGen(e, n, r) { // This method send the request and parse stream results.
         const s = `${ft.API_SERVER_URL}${e.startsWith("/") ? "" : "/"}${e}`
           , i = (r == null ? void 0 : r.asUserAccount) === !0 ? Ic(this.headers, "user") : {
             ...this.headers
@@ -13093,12 +13105,13 @@ const sd = class sd { // class GraphQLClient
         this.downtimeMode && lt(()=>this.downtimeMode = void 0);
         let l = [], d, u;
         const h = {}
+        // This f function is to handle one line of the streaming response.
           , f = C=>{
             if (!C)
                 return;
             const b = C[0] === "{" ? -1 : C.indexOf("=");
             let k, S;
-            if (b >= 0) {
+            if (b >= 0) { // Handle a model in this branch.
                 k = C.substring(0, b);
                 const D = C.substring(b + 1);
                 S = JSON.parse(D), // deserialize models from streams
@@ -13120,16 +13133,18 @@ const sd = class sd { // class GraphQLClient
                     userError: !1,
                     requestId: ya(o.headers)
                 });
-            k === "_metadata_" ? u = S : k === "SyncAction" ? (d || (d = []),
+            k === "_metadata_" ? u = S : k === "SyncAction" ? (d || (d = []), // Handle _metadata_.
             d.push(S),
-            h[k] = (h[k] || 0) + 1) : (l.push(S),
+            h[k] = (h[k] || 0) + 1) : (l.push(S), // The parsed model will be pushed into an array and returned to the caller.
             h[k] = (h[k] || 0) + 1)
         }
           , p = async(C,b)=>{
             let k = 0
               , S = 0;
             for (; ; ) {
+                // Give the event loop a chance to process other events after each 2k lines.
                 ++k % 2e3 === 0 && await new Promise(R=>setTimeout(R, 0));
+                // Split lines and parse them.
                 let D = C.indexOf(`
 `, S);
                 if (D === -1)
@@ -13137,7 +13152,7 @@ const sd = class sd { // class GraphQLClient
                         D = void 0;
                     else
                         return C.substring(S);
-                if (f(C.substring(S, D)),
+                if (f(C.substring(S, D)), // Parse a single line.
                 D === void 0)
                     return "";
                 S = D + 1
@@ -13189,6 +13204,7 @@ const sd = class sd { // class GraphQLClient
             }
         }),
         u.returnedModelsCount) {
+            // Examine metadata of the response.
             const C = [];
             for (const [b,k] of Object.entries(u.returnedModelsCount))
                 (h[b] || 0) !== (k || 0) && C.push(`${b}: ${h[b]}/${k}`);
@@ -32365,6 +32381,7 @@ const Bc = {
     static async databaseInfo(e) {
         const {userId: n, modelSchemaHash: r, minVersion: s} = e;
         let i = s;
+        // Create `linear_databases` calling `jn.databases`
         const o = (await jn.databases()).filter(p=>p.userId === n && p.version > i).orderBy(["version"], ["desc"]);
         o.length > 0 && (i = o[0].version);
         // the following code calculates the schemaHash of the database.
@@ -32480,7 +32497,7 @@ const Bc = {
                 F.info("Retrying opening database after error. Deleting existing database."),
                 await vb(kb)
             }
-        }, async()=>await p_(kb, 2, {
+        }, async()=>await p_(kb, 2, { // Linking to linear_databases database here.
             upgrade: e=>{
                 F.network("Initializing Database Manager database"),
                 e.objectStoreNames.contains("databases") || e.createObjectStore("databases", {
@@ -32554,9 +32571,9 @@ function m_(t) {
 /**
  * Property decorator
  */
-function w(t={}) {
-    return (e,n)=>{
-        M1(e, n, t.serializer !== void 0 && t.shallowObservation !== !0);
+function w(t={}) { // t for metadata options.
+    return (e,n)=>{ // e for the model prototype, n for the properties name
+        M1(e, n, t.serializer !== void 0 && t.shallowObservation !== !0); 
         const r = t.persistance !== void 0 ? t.persistance : ee.createAndUpdate
           , s = {
             type: vn.property,
@@ -32568,7 +32585,8 @@ function w(t={}) {
         t.indexed && (s.indexed = t.indexed),
         t.multiEntry && (s.multiEntry = t.multiEntry),
         t.shallowObservation && (s.shallowObservation = t.shallowObservation),
-        Me.registerProperty(e.constructor.name, n, s)
+        Me.registerProperty(e.constructor.name, n, s) // Register the property's metadata. 
+        // Note that the constructor's name is used here instead of model name.
     }
 }
 /**
@@ -32615,7 +32633,7 @@ function Nt(t) {
 }
 
 /**
- * BackReference decorator
+ * Reference decorator
  */
 function pe(t, e, n) {
     return (r,s)=>{
@@ -32624,7 +32642,7 @@ function pe(t, e, n) {
 }
 
 /**
- * LazyBackReference decorator
+ * LazyReference decorator
  */
 function Hr(t, e, n) {
     return (r,s)=>{
@@ -32651,7 +32669,9 @@ function g5(t, e) {
 }
 
 /**
- * ReferenceOrBack decorator.
+ * Reference or BackReference decorator.
+ * If the first prameter is a function, then it is used to declare a Reference. Otherwise,
+ * it is used to declare a BackReference.
  */
 function Dt(t, e, n) {
     return (r,s)=>{
@@ -32736,44 +32756,46 @@ function ii(t, e, n) {
 /**
  * Model decorator
  */
-function We(t) { // this is the decorator to register a model to ModelRegistry
+function We(t) { // t is the name of that model
     return e=>{ // e if the constructor of that model
-        M1(e.prototype, "createdAt", !1), // all model would have these 3 default fields, there are made responsive
+        M1(e.prototype, "createdAt", !1), // All model would have these 3 default fields. There are made responsive.
         M1(e.prototype, "updatedAt", !1),
         M1(e.prototype, "archivedAt", !1),
-        e.prototype.modelName = t; // name is bound to the prototype
-        let n = `${t}_43_${Bc.models[t]}`; // schema version is added to hash: "Issue_43_3"
-        if (Me.getModelClass(t)) // if the model has been registered before, ignore this registration
+        e.prototype.modelName = t; // Name is bound to the prototype.
+        let n = `${t}_43_${Bc.models[t]}`; // Schema version is added to hash, e.g. "Issue_43_3".
+        if (Me.getModelClass(t)) // If the model has been registered before.
             return;
         e.loadStrategy === dn.partial && (n += "_partial"); // "Issue_43_3_partial"
-        const r = Me.propertiesOfModel(e.name);
+        const r = Me.propertiesOfModel(e.name); // Because of how tsc compiles, members of a class are registered before the the class.
         for (const s of Object.keys(r)) {
-            const i = eY[`${t}_${Bc.models[t] || 0}_${s}`] ? "1" : "0";
-            n += "_" + s + "_" + i // schema hash should also include all its properties, "Issue_43_3_partial_propertyName_1_propertyName_0..." like this
+            const i = eY[`${t}_${Bc.models[t] || 0}_${s}`] ? "1" : "0"; // Seems some properties are special.
+            n += "_" + s + "_" + i // Schema hash also include all its properties, "Issue_43_3_partial_propertyName_1_propertyName_0..." like this
         }
-        n = $1(n), // hash generated, so the model's name, its Bc version and its 
-        // properties name determines its hash value. The hash value will be used for database migration.
-        Me.registerModel(t, e, n) // register the model's name, `class` and hash to ModelRegistry
+        n = $1(n), // The model's hash generated.
+        Me.registerModel(t, e, n) // Register the model's name, constructor and its hash to ModelRegistry.
     }
 }
 
-function A4(t, e, n, r, s) { // references helper function
-    // `t` the model decorated, 
-    // `e` for property name of `s`
-    // `r` for the back reference property name
-    // `s` for a function that returns the reference model 
-    // (forwardRef for solving files' circular dependency issue), 
-    const i = e + "Id" // such as `cycleId` of `Issue`
+/**
+ * The helper function to register Reference or BackReference.
+ */
+function A4(t, e, n, r, s) {
+    // `t` for the model. For example, Issue.
+    // `e` for the name of the Reference to `s`. For example, assignee.
+    // `n` for metadata options.
+    // `r` for the name of the BackReference property. For example, assignedIssues.
+    // `s` for a closure that returns the referenced model's constructor. For example, () => User.
+    const i = e + "Id" // such as `assigneeId` of `Issue`
       , a = n.nullable
-      , o = n.nullable ? !0 : n.optional; // a nullable field must be optional
+      , o = n.nullable ? !0 : n.optional;
     Object.defineProperty(t, e, {
         get: function() {
             const u = this[i];
             if (u)
-                return this.store.findById(at, u) // find the referenced model with given id
+                return this.store.findById(at, u) // Find the referenced model for the store with given id.
         },
         set: function(u) {
-            // set id instead 
+            // Set `assigneeId` instead, for example.
             this[i] = u ? typeof u == "string" ? u : u.id : void 0
         },
         enumerable: !0,
@@ -32786,22 +32808,26 @@ function A4(t, e, n, r, s) { // references helper function
         referenceNullable: a
     };
     s && (l.referencedClassResolver = s),
-    Me.registerProperty(t.constructor.name, e, l),
+    Me.registerProperty(t.constructor.name, e, l), // Register `assignee` metadata.
     M1(t, i, !1); // make the id property observable
     const d = {
-        type: s ? vn.reference : vn.backReference,
+        type: s ? vn.reference : vn.backReference, // If we pass `s` then its a Reference.
         referenceOptional: o,
         referenceNullable: a,
-        persistance: n !== void 0 && n.persistance !== void 0 ? n.persistance : ee.createAndUpdate
+        // Only id will be persisted into the database.
+        persistance: n !== void 0 && n.persistance !== void 0 ? n.persistance : ee.createAndUpdate // The default strategy.
     };
-    s && (d.referencedClassResolver = s),
+    s && (d.referencedClassResolver = s), // This metadata will be used to load and get the referenced model.
     r && (d.referencedProperty = r),
     n != null && n.indexed && (d.indexed = n.indexed),
     n != null && n.onDelete && (d.onDelete = n.onDelete),
     n != null && n.onArchive && (d.onArchive = n.onArchive),
-    Me.registerProperty(t.constructor.name, i, d)
+    Me.registerProperty(t.constructor.name, i, d) // Register `assigneeId` metadata.
 }
-function j4(t, e, n, r, s) { // lazy references helper function
+/**
+ * The helper function to register lazy Reference and BackReference.
+ */
+function j4(t, e, n, r, s) { 
     // t the model's prototype
     // e the property's name
     // n configuration
@@ -32825,7 +32851,7 @@ function j4(t, e, n, r, s) { // lazy references helper function
                 this[a] || (this[a] = new Qn(h,s())) // BackReferenceValue
             } else
                 t[r],
-                this[a] || (this[a] = new Lu(this,e)); // ReferenceValue, e.g. new Lu(this, "documentContentId")
+                this[a] || (this[a] = new Lu(this,e)); // LazyBackReference
             return this[a]
         },
         set: function(h) {
@@ -32865,14 +32891,14 @@ function j4(t, e, n, r, s) { // lazy references helper function
     Me.registerProperty(t.constructor.name, i, u)
 }
 /**
- * the helper function to make a property observable. and also plays
- * an important role when updating properties of a model
+ * The helper function to make a property observable. And it also plays
+ * an important role when properties of a model get updated.
  */
 function M1(t, e, n, r) {
-    // `t` for the model's prorotype, 
-    // `e` for the property's name, 
-    // `n` for deep observation, 
-    // `r` for deseralizer
+    // `t` for the model's prorotype object.
+    // `e` for the property's name. 
+    // `n` for deep observation. 
+    // `r` for deseralizer.
     const s = e + "_o" // key for observable value, 
       , i = e + "_v" // key for the plain value
       , a = e + "_d"; // key for the deserializer
@@ -32880,6 +32906,9 @@ function M1(t, e, n, r) {
         get: function() {
             return this.__mobx[a] && (this.__mobx[i] !== void 0 && (this.__mobx[i] = this.__mobx[a].deserialize(this.__mobx[i])),
             delete this[a]),
+            // The minified code seems difficult to understand. But you only need to
+            // pay attention to ut.box here. If the model is observable, M1 would create a MobX box on the property,
+            // e.g. `assigneedId`, to make the property observable.
             this.madeObservable ? (this.__mobx[s] || (this.__mobx[s] = ut.box(this.__mobx[i], {
                 deep: n
             }),
@@ -32887,16 +32916,18 @@ function M1(t, e, n, r) {
             this.__mobx[s].get()) : this.__mobx[i]
         },
         set: function(o) {
-            // when the value is set, we always remove the deserializer
+            // The similar logic applied to the setter.
             if (delete this.__mobx[a],
-            !this.madeObservable) // if this model is not observable, we directly set the value to __mobx[i]
+            !this.madeObservable)
                 r && this.__mobx[i] !== o && delete this[r],
                 this.__mobx[i] = o;
             else if (!this.__mobx[s]) 
                 r && this.__mobx[i] !== o && delete this[r],
                 this.__mobx[s] = ut.box(o, {
                     deep: n
-                }), // if there is no observable and the teh value changes, we should create an observable value
+                }), 
+                // This method is called to bookeepping what property has been changed, what is the old value and what
+                // is the new value. This is critical to construct an UpdateTransaction.
                 this.propertyChanged(e, this.__mobx[i], o),
                 delete this.__mobx[i];  // remain the plain value
             else {
@@ -61648,6 +61679,7 @@ function kr(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
+/** Model DocumentContent */
 const t0 = class t0 extends at {
     get contentData() {
         return this.contentState ? this.createYjsDocument().asProsemirrorData() : void 0
@@ -61797,6 +61829,7 @@ const t0 = class t0 extends at {
 ;
 t0.loadStrategy = dn.partial,
 t0.partialLoadMode = ki.regular;
+/** Model DocumentContent */
 let en = t0;
 kr([w({
     optimizer: Ite
@@ -61808,7 +61841,7 @@ kr([kl(()=>re, "documentContent", { // a back reference to Issue
     indexed: !0,
     cascadeHydration: !0 // when the issue hydrates, the documentContent hydrates as well
 })], en.prototype, "issue", void 0);
-kr([Dt(()=>ie, "documentContent", { // a back reference to the project
+kr([Dt(()=>ie, "documentContent", {
     optional: !0,
     nullable: !1,
     indexed: !0
@@ -64470,7 +64503,7 @@ const lv = be.MINUTE * 5
     showOnboarding(e) {
         return e < 2 && !this.hasMultipleWorkspaces && this.settings.getFlag(Rd.completedOnboarding) === 0
     }
-    async canSkipNetworkHydration(e) {
+    async canSkipNetworkHydration(e) { // e for the referenced model's class
         return await this.store.syncClient.hasModelsForPartialIndexValues(Me.getClassName(e), this.organization.accessibleTeams.map(n=>Zn.createPartialIndexValue({
             modelClass: ne,
             syncGroup: n.id
@@ -64490,8 +64523,8 @@ const lv = be.MINUTE * 5
         this.reminders = new te,
         this.pushSubscriptions = new te,
         this.apiKeys = new te,
-        this.assignedIssues = new Et(re,this,"assigneeId",void 0,{
-            canSkipNetworkHydration: ()=>this.canSkipNetworkHydration(re)
+        this.assignedIssues = new Et(re,this,"assigneeId",void 0,{ // Assigned issues is a LazyReferenceCollection of User.
+            canSkipNetworkHydration: ()=>this.canSkipNetworkHydration(re) // Tell if can skip network hydration of "Issue".
         }),
         this.createdIssues = new Et(re,this,"creatorId",void 0,{
             canSkipNetworkHydration: ()=>this.canSkipNetworkHydration(re)
@@ -76256,7 +76289,7 @@ const Vs = class Vs extends Xc {
         this.sortOrder = 0,
         this.previousIdentifiers = [],
         this.labels = new te(new de(n=>`${n.parent ? `0${n.parent.name}` : 1}${n.name}`)),
-        this.comments = new Et(nt,this,"issueId"),
+        this.comments = new Et(nt,this,"issueId"), // Here LazyReferenceCollectionImpl is manually constructed
         this.draftComments = new te(new de("createdAt","asc")),
         this.history = new Et(tt,this,"issueId"),
         this.attachments = new Et(mr,this,"issueId"),
@@ -76965,7 +76998,7 @@ const Vs = class Vs extends Xc {
 Vs.usedForPartialIndexes = !0,
 Vs.loadStrategy = dn.partial,
 Vs.partialLoadMode = ki.regular;
-/** Issue. */
+/** Model Issue. */
 let re = Vs;
 // "w" should be marking that this field is a "property" of "Issue".
 Pe([w({
@@ -77028,10 +77061,10 @@ Pe([g5(()=>qn, {
     nullable: !1,
     indexed: !0
 })], re.prototype, "externalUserCreator", void 0);
-Pe([pe(()=>K, "assignedIssues", { // User refers to a collection of Issues model on property "assignedIssues"
+Pe([pe(()=>K, "assignedIssues", {
     nullable: !0,
     indexed: !0
-})], re.prototype, "assignee", void 0); // issue refers to a User model on property "assignee"
+})], re.prototype, "assignee", void 0);
 Pe([Ue(()=>K, {
     nullable: !0
 })], re.prototype, "snoozedBy", void 0);
@@ -79178,7 +79211,7 @@ function ME(t, e, n, r) {
     i
 }
 const Xm = class Xm {
-    static async fullBootstrap(e, n, r, s) { // the process of a full bootstrap
+    static async fullBootstrap(e, n, r, s) { 
         Hi.addStartupSpanTag("fullBootstrap", !0),
         F.network("Full bootstrap");
         const i = n.join(",")
@@ -79212,7 +79245,7 @@ const Xm = class Xm {
         r && (i += `&syncGroups=${r.join(",")}`),
         (s == null ? void 0 : s.forceNoCache) === !0 && (i += "&noCache=true"),
         s != null && s.firstSyncId && (i += `&firstSyncId=${s.firstSyncId}`);
-        const a = await e.rrestModelsJsonStreamestModelsJsonStream(i)
+        const a = await e.restModelsJsonStream(i)
           , o = a.metadata
           , l = a.syncActions || []
           , d = mm.applyDeltaSyncOnModelObjectCollection(a.models, l.reverse())
@@ -79331,13 +79364,13 @@ class TE {
         return (e = this.cachedData) == null ? void 0 : e.length
     }
     constructor(e, n, r) {
-        this.ready = !1, // if the store is ready (has loaded data)
-        this.flushed = !1, // if the store is in sync with the database
+        this.ready = !1, // Whether the store is ready (has loaded data).
+        this.flushed = !1, // Whether the store is in sync with the database.
         this.flushErrored = !1,
         this.graphQLClient = n,
         this.modelName = e,
         this.options = r,
-        this.storeName = $1(e + Me.propertyHashOfModel(e)) // the table name in the database
+        this.storeName = $1(e + Me.propertyHashOfModel(e)) // Table name in the database.
     }
     async modelCount(e) {
         return this.cachedData ? this.cachedData.length : await e.count(this.storeName) || 0
@@ -79352,7 +79385,11 @@ class TE {
         return this.cachedData ? this.cachedData.find(i=>i.id === s) : e.get(this.storeName, s)
     }
     async getAllForIndexedKey(e, n, r) {
-        return this.cachedData ? this.cachedData.filter(s=>s[n.key] === n.value) : e ? await e.getAllFromIndex(this.storeName, n.key, IDBKeyRange.only(n.value)) : []
+        return this.cachedData 
+            ? this.cachedData.filter(s=>s[n.key] === n.value) 
+            : e 
+                ? await e.getAllFromIndex(this.storeName, n.key, IDBKeyRange.only(n.value)) 
+                : []
     }
     async getByIds(e, n) {
         return this.isReady || await this.waitUntilReady(),
@@ -79363,15 +79400,19 @@ class TE {
         this.cachedData ? this.cachedData : await e.getAll(this.storeName)
     }
     checkStore(e, n, r) {
+        // Check if the model has table in the database. If not, create a table.
         r.has(this.storeName) || (F.network(`Creating new store ${this.storeName} for model ${this.modelName}`),
-        n.objectStore(dr).put({
-            persisted: !1
+        // n for IDBTransactionProxy
+        n.objectStore(dr).put({ // Put the table's info into _meta table.
+            persisted: !1 // Newly created table are not persisted yet.
         }, this.modelName),
-        e.createObjectStore(this.storeName, { // create a table in the database for the model, the table's name is the model's hash
+         // Create a table in the database for the model, the table's name is the model's hash.
+        e.createObjectStore(this.storeName, {
             keyPath: "id"
         })),
+        // Create indexes on the new table.
         this.createIndexes(n),
-        r.delete(this.storeName)
+        r.delete(this.storeName) // Mark table checked.
     }
     async clearStore(e) {
         return e.clear(this.storeName)
@@ -79379,10 +79420,10 @@ class TE {
     setModelData(e) {
         this.cachedData = e, // cacheData is for caching values that should be written into the database
         // it would be cleared when the flush is done
-        this.ready = !0,
-        this.flushed = !1
+        this.ready = !0, // Mark itself as ready.
+        this.flushed = !1 // Mark itself as not flushed so later it will be saved to the database.
     }
-    async checkIsReady(e) {
+    async checkIsReady(e) { // e for IDBTransaction
         const [n,r] = await Promise.all([e.objectStore(dr).get(this.modelName), e.objectStore(this.storeName).count()]);
         n && typeof n == "object" && n.persisted && (!this.options.required || r > 0) ? this.ready = !0 : this.ready = !1
     }
@@ -79479,7 +79520,9 @@ const Jm = class Jm extends TE {
         this.partialIndexStoreName = this.storeName + "_partial"
     }
     checkStore(e, n, r) {
+        // n for IDBTransactionProxy
         super.checkStore(e, n, r),
+        // Create partial index table for PartialStore.
         r.has(this.partialIndexStoreName) || e.createObjectStore(this.partialIndexStoreName, {
             keyPath: "id"
         }),
@@ -79497,7 +79540,13 @@ const Jm = class Jm extends TE {
         if (!this.isReady) {
             const i = typeof n == "string" ? [n] : n.partialIndexValues
               , a = await super.getById(e, s);
-            return a && a !== "needs_network_hydration" ? a : r != null && r.onlyIfLocallyAvailable || e && (i === void 0 || await this.hasModelsForPartialIndexValues(e, i) || r != null && r.canSkipNetworkHydration && await (r == null ? void 0 : r.canSkipNetworkHydration())) || !Me.getModelClass(this.modelName) ? void 0 : "needs_network_hydration"
+            return a && a !== "needs_network_hydration" 
+                ? a 
+                : r != null && r.onlyIfLocallyAvailable || 
+                    e && (i === void 0 || await this.hasModelsForPartialIndexValues(e, i) || r != null && r.canSkipNetworkHydration && await (r == null ? void 0 : r.canSkipNetworkHydration())) || 
+                    !Me.getModelClass(this.modelName) 
+                        ? void 0 
+                        : "needs_network_hydration"
         }
         return super.getById(e, s)
     }
@@ -79548,6 +79597,7 @@ const Jm = class Jm extends TE {
 ;
 Jm.schemaVersion = 1;
 let p3 = Jm;
+/** SyncActionStore */
 class oce {
     constructor() {
         this.storeIsEmpty = !1,
@@ -79610,23 +79660,25 @@ class oce {
         }
     }
 }
-class cce { // store manager
+/** StoreManager */
+class cce {
     get onSavingStoreCountChange() {
         return this._onSavingStoreCountChange
     }
     get requiresFlushing() {
         return this.objectStores.find(e=>e.requiresFlushing) !== void 0
     }
-    constructor(e, n) { // when StoreManager is constructed, it would create Store for each model registered
+    constructor(e, n) {
         var s;
         this.objectStoreLookup = {},
         this.objectStores = [],
         this._onSavingStoreCountChange = new Tt;
-        const r = n.requiredModels.map(i=>Me.getClassName(i)); // some models are required to boot immediately
+        const r = n.requiredModels.map(i=>Me.getClassName(i));
+        // n.requiredModels are ['Team', 'TeamKey', 'User', 'UserSettings', 'WorkflowState', 'Organization'].
         for (const i of Me.getModelNames()) {
             const o = ((s = Me.getModelClass(i)) == null ? void 0 : s.loadStrategy) === dn.partial 
-                ? new p3(i,e) // create ParitalStore
-                : new TE(i,e,{ // create FullStore
+                ? new p3(i,e) // create ParitalObjectStore
+                : new TE(i,e,{ // create FullObjectStore
                     required: r.includes(i)
                   });
             this.objectStoreLookup[i] = o,
@@ -79679,19 +79731,21 @@ class cce { // store manager
             return
         }
     }
-    createStores(e, n) { // create tables in the database
-        const r = new Set(e.objectStoreNames);
-        r.has(Mc) || e.createObjectStore(Mc, { // create "_transactions" store
+    createStores(e, n) { // Create tables in the databases.
+        // e for IDBDatabaseProxy
+        // n for IDBTransactionProxy
+        const r = new Set(e.objectStoreNames); // 
+        r.has(Mc) || e.createObjectStore(Mc, { // Create "_transactions" table
             keyPath: "id",
             autoIncrement: !0
         }),
-        r.has(dr) || e.createObjectStore(dr), // create "_meta" store
+        r.has(dr) || e.createObjectStore(dr), // Create "_meta" table
         r.delete(Mc),
         r.delete(dr);
         for (const s of this.objectStores)
-            s.checkStore(e, n, r);
+            s.checkStore(e, n, r); // Make sure
         this.syncActionStore.checkStore(e, r),
-        r.forEach(s=>{
+        r.forEach(s=>{ // Delete old models.
             F.network(`Deleting old store ${s}`),
             e.deleteObjectStore(s)
         }
@@ -79762,7 +79816,7 @@ const eg = class eg { // class: Database
     get onSavingStoreCountChange() {
         return this.storeManager.onSavingStoreCountChange
     }
-    requiredBootstrap() {
+    requiredBootstrap() { // Determine what type of boostrapping we need to perform.
         var o;
         const e = this.metadata.lastSyncId
           , n = Me.getModelNamesByMaxLoadStrategy(dn.lazy)
@@ -79838,27 +79892,30 @@ const eg = class eg { // class: Database
     async open(e) {
         this.openOptions = e;
         const n = mn.getValue(mn.clientDatabaseMinVersion, 50)
+          // When calling this method, linear_databases would be created.
           , r = await Xn.databaseInfo({
             ...e,
             minVersion: n
         });
-        Xn.registerDatabase(r), // save the database's meta into "databases" database
+        Xn.registerDatabase(r), // Save the database's meta into "databases" database.
         this.name = r.name,
         F.network(`Using database ${this.name} schema version ${r.schemaVersion}`);
         let s = !1;
         try {
-            this.database = await p_(this.name, r.schemaVersion, {
-                // when the schemaVersion changes, or there's no database with name `this.name`, the upgrade callback
-                // would be called to creat the database
+            // Bootstrap 2. Connect to the database and see if should create or migrate the database.
+            this.database = await p_(this.name, r.schemaVersion, { // Use schemaVersion to check if a migration is required.
+                // When the schemaVersion changes, or there's no database with name `this.name`, the upgrade callback
+                // would be called to creat the database.
                 upgrade: (i,a,o,l)=>{
-                    // i for the new datasbase
-                    // l for the old database
+                    // i for the DatabaseProxy
+                    // l for the Transaction
                     F.info("Upgrading database.", {
                         name: this.name
                     }),
                     F.network(`Upgrading database ${this.name}`),
                     s = !0,
-                    // let stores to create tables
+                    // When creating the database, all ObjectStore will be used to
+                    // create corresponding tables.
                     this.storeManager.createStores(i, l)
                 }
                 ,
@@ -79893,8 +79950,9 @@ const eg = class eg { // class: Database
                 }
             throw i
         }
+        // Get metadata of the database.
         this.metadata = await this.getMetadata(s),
-        await this.storeManager.checkReadinessOfStores(this.database), // check if stores are ready
+        await this.storeManager.checkReadinessOfStores(this.database), // On first bootstrapping, all models are not ready.
         Xn.cleanOutdatedDatabases(e.userId, r.version, r.userVersion),
         hs || Xn.deleteOutdatedDemoDatabases()
     }
@@ -80056,7 +80114,9 @@ const eg = class eg { // class: Database
         if (!e)
             throw new Error("Trying to access closed database");
         const n = Me.getModelNames(dn.instant)
-          // read models that should be load instantly from the local database
+          // Read models that should be load instantly from ObjectStore.
+          // During a full boostrapping, models are cached in the ObjectStore
+          // so them do not retrieve from IndexedDB.
           , r = n.map(o=>this.storeManager.objectStore(o).getAll(e))
           , s = await Promise.all(r).catch(o=>this.handleReadError({
             error: o,
@@ -80213,6 +80273,7 @@ const eg = class eg { // class: Database
         let r;
         if (n.type !== "local") {
             // If Linear bootstraps for the first time, it could call `fullBootstrap`.
+            // This would trigger a HTTP request and get models and metadata in the response.
             const o = await (n.type === "full" ? Oo.fullBootstrap(this.graphQLClient, n.modelsToLoad, n.partialModels) : Oo.partialBootstrap(this.graphQLClient, n.modelsToLoad)).catch(d=>{
                 throw d.userError || F.error("Sync bootstrap query error", d, {
                     type: n.type,
@@ -80229,7 +80290,6 @@ const eg = class eg { // class: Database
             );
             Hi.addStartupSpanTag("bootstrap.networkModelCount", o.data.length),
             Hi.addStartupSpanTag("bootstrap.syncPacketCount", ((s = o.syncDeltaPackets) == null ? void 0 : s.length) || 0);
-            // parse 
             const l = o.data.reduce((d,u)=>{
                 const h = u.__class;
                 return delete u.__class,
@@ -80241,9 +80301,11 @@ const eg = class eg { // class: Database
             for (const d of n.modelsToLoad)
                 l[d] || (l[d] = []);
             r = o.syncDeltaPackets;
-            // Each type of model would be cached into the store manager.
+            // Models 
+            // Each type of model will be set into ObjectStore.
             for (const d in l)
                 this.storeManager.setModelData(d, l[d] ?? []);
+            // Update database's metadata.
             this.metadata.backendDatabaseVersion = o.databaseVersion,
             this.metadata.subscribedSyncGroups = o.subscribedSyncGroups,
             n.type === "full" && (this.metadata.lastSyncId = o.lastSyncId,
@@ -81981,7 +82043,7 @@ const vce = be.MINUTE * 2
         this._shouldResetOnError = !1,
         this.lastSyncId = 0,
         this.backendDatabaseVersion = 0,
-        this.modelLookup = {}, // the dictionary maps a model's id to the object! It is the "object pool".
+        this.modelLookup = {}, // Maps a model's id to the object! It is the "ObjectPool".
         this.temporaryModelLookup = {},
         this.archivedModelLookup = {},
         this.modelClassToArchivedModelLookup = {},
@@ -82211,7 +82273,7 @@ const vce = be.MINUTE * 2
         F.network("Sending ephemeral update", r),
         this.socket.send(s)
     }
-    findById(e, n, r) { // the "findById", `e` for the Model's constructor function, `n` for id, `r` for options
+    findById(e, n, r) { // `e` for the Model's constructor function, `n` for id, `r` for options
         let s = this.modelLookup[n] || this.archivedModelLookup[n];
         if (!s && !(r != null && r.excludeTemporaryModels) && (s = this.temporaryModelLookup[n]),
         s !== void 0 && s instanceof e)
@@ -82266,13 +82328,13 @@ const vce = be.MINUTE * 2
         var l, d;
         const s = typeof n == "string" ? n : n.id
           , i = typeof n == "string" ? void 0 : n.partialIndexValues
-          , a = this.findById(e, s);
+          , a = this.findById(e, s); // First it will check if the model is already hydrated and lives in the ObjectPool.
         if (a)
             return a;
-        const o = await this.database.getModelDataById(Me.getClassName(e), s, r);
+        const o = await this.database.getModelDataById(Me.getClassName(e), s, r); // If not, it will try to load the model from IndexedDB.
         if (o !== void 0) {
             if (o === "needs_network_hydration") {
-                if (r != null && r.onlyIfLocallyAvailable)
+                if (r != null && r.onlyIfLocallyAvailable) // If there is an option to let LSE only load from local IndexedDB, it will not trigger a network request.
                     return;
                 if (this.store.developerOptions && await this.applyNetworkDeveloperOptions(),
                 this.partialModelLoadedInFull(e)) {
@@ -82343,7 +82405,7 @@ const vce = be.MINUTE * 2
     async initializeDatabase(e) {
         const n = this.logStorageEstimates();
         try {
-            await this.database.open(e)
+            await this.database.open(e) // <- Real stuff.
         } catch (r) {
             const s = await n;
             F.withEnabledLogging(()=>{
@@ -82370,31 +82432,33 @@ const vce = be.MINUTE * 2
         this.userAccountId = r;
         const s = this.database.requiredBootstrap();
         ((o = this.store.developerOptions) == null ? void 0 : o.forceNotLoadPartialModelsOnBootstrap) === !0 && s.type === "full" && (s.partialModels = []);
+        /** Fetch delta request. We only do delta request with a partial bootstrapping. */
         const i = s.type === Ra.partial && this.fetchDelta(s.lastSyncId).catch(()=>{}
         );
         this._onBootstrap.fire(s.type);
-        const a = await this.database.bootstrap();
+        const a = await this.database.bootstrap(); // Bootstrap the Database from here.
         this.firstSyncId = this.lastSyncId = a.lastSyncId,
         this.backendDatabaseVersion = a.backendDatabaseVersion,
         this.subscribedSyncGroups = new Set(a.subscribedSyncGroups);
         try {
             F.network(`Bootstrapping. Last sync id is ${this.lastSyncId}. Backend DB version is ${this.backendDatabaseVersion}`);
+            // Get all models that should be hydrated when the application bootstraps.
             const u = await this.database.getAllInitialHydratedModelData()
-              , h = []
-              , f = [];
+              , h = [] // To store the model objects.
+              , f = []; // To store dehydrated model properties.
             // Construct the models from the fetched data.
             if (xt.trace("startup", "SyncClient.bootstrap.constructModels", ()=>{
                 for (const C of Object.keys(u))
                     for (const b of u[C]) {
-                        const k = Me.getModelClass(C);
+                        const k = Me.getModelClass(C); // Get the model's constructor for ModelRegistry.
                         if (!k) {
                             F.info(`Could not find model class for model type '${b.__modelName}'.`);
                             continue
                         }
-                        const S = new k(!1); // the models' constructors would be called here
-                        S.id = b.id, // change the model's id, the model's properties and references would be set later
+                        const S = new k(!1); // Call the model's constructor to hydrate the model.
+                        S.id = b.id, // Change the model's id, the model's properties and references would be set later.
                         h.push(S),
-                        f.push(b)
+                        f.push(b) 
                     }
             }
             ),
@@ -82406,13 +82470,13 @@ const vce = be.MINUTE * 2
             Hi.addStartupSpanTag("models.count", h.length),
             xt.trace("startup", "SyncClient.bootstrap.updateModels", ()=>{
                 for (const b of h)
-                    // write init models into store
+                    // The newly constructed models will be saved into the "ObjectPool".
                     this.addModelToLiveCollections(b);
                 let C = 0;
-                lt(()=>{
+                lt(()=>{ // Do it in MobX's context.
                     for (const b of h)
-                        b.updateFromData(f[C++]); // dump
-                    for (const b of h) // update referenced models
+                        b.updateFromData(f[C++]); // Dump model properties into that model object.
+                    for (const b of h) // Dehydrate references.
                         b.attachToReferencedProperties()
                 }
                 )
@@ -82431,6 +82495,7 @@ const vce = be.MINUTE * 2
                 const C = a.syncDeltaPackets.filter(b=>b.action !== "S");
                 await this.applyDelta(C, a.lastSyncId, !0)
             }
+            // Demo logic. Omit this.
             if (hs)
                 return {
                     success: !0,
@@ -82446,7 +82511,7 @@ const vce = be.MINUTE * 2
             await this.startSyncing(a.type),
             this.transactionQueue.confirmPersistedTransactions()) : (this._shouldResetOnError = a.type === Ra.partial,
             X0.onLoadingDone.subscribeOnce(async()=>{
-                await this.database.flush(), // onLoadingDone, flush loaded models into the database
+                await this.database.flush(), // For a full bootstrapping, only flush the database when onLoadingDone is triggered.
                 await this.startSyncing(a.type),
                 this.transactionQueue.confirmPersistedTransactions(),
                 this._shouldResetOnError = !1
@@ -82757,7 +82822,7 @@ const vce = be.MINUTE * 2
         s.isArchived ? this.addModelToArchiveCollections(s) : this.addModelToLiveCollections(s),
         s
     }
-    addModelToLiveCollections(e) { // add model to the ObjectPool
+    addModelToLiveCollections(e) { // Add a model object to the "ObjectPool".
         this.removeModelFromArchiveCollections(e),
         this.modelLookup[e.id] || (this.modelLookup[e.id] = e,
         this.modelClassToModelLookup[e.modelName].add(e))
@@ -83937,10 +84002,12 @@ const sg = class sg { // class SyncedStore
             modelSchemaHash: Me.schemaHash // the schema hash would be used here to detect if there is a database migration
         };
         this.syncClient.onTransactionCountChange.subscribe(this.handleTransactionCountChange),
+        // In this line StoreManager will be constructed.
+        // So the ObjectStores are created before database initialization.
         this.syncClient.onSavingStoreCountChange.subscribe(this.handleSavingStoreCountChange);
         try {
-            return await this.syncClient.initializeDatabase(s),
-            await this.syncClient.bootstrap(s)
+            return await this.syncClient.initializeDatabase(s), // <- Create databases and tables.
+            await this.syncClient.bootstrap(s) // <- Boostrap!
         } catch (i) {
             return {
                 success: !1,
