@@ -79351,7 +79351,7 @@ var bw;
 /** FullStore */
 class TE { 
     get isReady() {
-        return this.ready
+        return this.ready 
     }
     get requiresFlushing() {
         return this.cachedData !== void 0 && !this.flushed
@@ -79391,9 +79391,9 @@ class TE {
         if (!this.isReady) {
             if (r != null && r.onlyIfLocallyAvailable)
                 return;
-            await this.waitUntilReady()
+            await this.waitUntilReady() // Wait for the store is ready. For an async store, it is always considered as ready.
         }
-        return this.cachedData ? this.cachedData.find(i=>i.id === s) : e.get(this.storeName, s)
+        return this.cachedData ? this.cachedData.find(i=>i.id === s) : e.get(this.storeName, s) // Get the model for cachedData or IndexedDB.
     }
     async getAllForIndexedKey(e, n, r) {
         return this.cachedData 
@@ -79436,6 +79436,7 @@ class TE {
     }
     async checkIsReady(e) { // e for IDBTransaction
         const [n,r] = await Promise.all([e.objectStore(dr).get(this.modelName), e.objectStore(this.storeName).count()]);
+        // Since partial store is not required, they will be set to ready.
         n && typeof n == "object" && n.persisted && (!this.options.required || r > 0) ? this.ready = !0 : this.ready = !1
     }
     async setIsReady(e) {
@@ -79523,12 +79524,12 @@ class TE {
     }
 }
 /** PartialStore */
-const Jm = class Jm extends TE {
+const Jm = class Jm extends TE { // PartialStore
     constructor(e, n) {
         super(e, n, {
             required: !1
         }),
-        this.partialIndexStoreName = this.storeName + "_partial"
+        this.partialIndexStoreName = this.storeName + "_partial" // Partial store has a _partial database.
     }
     checkStore(e, n, r) {
         // n for IDBTransactionProxy
@@ -79550,10 +79551,13 @@ const Jm = class Jm extends TE {
         const s = typeof n == "string" ? n : n.id;
         if (!this.isReady) {
             const i = typeof n == "string" ? [n] : n.partialIndexValues
-              , a = await super.getById(e, s);
+              , a = await super.getById(e, s); // Call getById of FullStore.
             return a && a !== "needs_network_hydration" 
                 ? a 
-                : r != null && r.onlyIfLocallyAvailable || 
+                // Here we determine if we should need from network.
+                : r != null && r.onlyIfLocallyAvailable ||  // 1. Not onlyIfLocallyAvailable
+                    // 2. If no partialIndex is provided.
+                    // 3. canSkipNetworkHydration returns true.
                     e && (i === void 0 || await this.hasModelsForPartialIndexValues(e, i) || r != null && r.canSkipNetworkHydration && await (r == null ? void 0 : r.canSkipNetworkHydration())) || 
                     !Me.getModelClass(this.modelName) 
                         ? void 0 
@@ -79575,11 +79579,13 @@ const Jm = class Jm extends TE {
             return !1;
         if (r != null && r.requireAll) {
             for (const s of n)
+                // As for "requireAll", if any indexed key cannot be found in IndexedDB, thisd method returns false.
                 if (!await e.get(this.partialIndexStoreName, IDBKeyRange.only(s)))
                     return !1;
             return !0
         } else {
             for (const s of n)
+                // If any indexed key can be found in IndexDB, this method returns true.
                 if (await e.get(this.partialIndexStoreName, IDBKeyRange.only(s)))
                     return !0;
             return !1
@@ -80147,7 +80153,7 @@ const eg = class eg { // class: Database
         return this.storeManager.objectStore(e).isReady
     }
     async getModelDataById(e, n, r) {
-        if (this.database)
+        if (this.database) // e for class name, n for the id, r for options
             return this.storeManager.objectStore(e).getById(this.database, n, r).catch(s=>this.handleReadError({
                 error: s,
                 method: "getModelDataById",
@@ -82345,8 +82351,9 @@ const vce = be.MINUTE * 2
     localStoreReady(e) {
         return this.database.objectStoreReady(Me.getClassName(e))
     }
-    async hydrateModel(e, n, r) {
-        var l, d;
+    async hydrateModel(e, n, r) { // Hydrate a model.
+        var l, d; // e for the model's class, n is an object which contains the id of the model that is going to be hydrated, 
+        // or indexes, r for a option object
         const s = typeof n == "string" ? n : n.id
           , i = typeof n == "string" ? void 0 : n.partialIndexValues
           , a = this.findById(e, s); // First it will check if the model is already hydrated and lives in the ObjectPool.
@@ -82386,6 +82393,8 @@ const vce = be.MINUTE * 2
                 }
                 return this.findById(e, s)
             }
+
+            // If LSE can load the model from the local database, LSE will hydrate these model and return the first one's hydration promise.
             return this.hydrationBatch.addOperation(o, u=>this.createHydratedModels(e, [u])[0])
         }
     }
