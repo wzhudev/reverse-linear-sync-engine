@@ -7907,21 +7907,22 @@ function Tx(t) {
         e.push(t[n].charAt(0).toUpperCase() + t[n].substr(1));
     return e
 }
-const Ku = class Ku {
+const Ku = class Ku { // PartialIndexRegistry
     static createPartialIndexValue(e, n) {
         return typeof e == "string" 
             ? e.split(".").at(-1) === "teamId" 
                 ? n 
-                : `${e}-${n}` 
+                : `${e}-${n}` // userId-<hash>
             : "id"in e 
                 ? e.id 
+                // TODO: what are indexedKey and syncGroup used for?
                 : "indexedKey"in e 
                     ? this.createPartialIndexValue(e.indexedKey, e.keyValue.toString()) 
                     : "syncGroup"in e 
                         ? this.createPartialIndexValue("teamId", e.syncGroup) 
                         : this.FULLY_LOADED_INDEX_NAME
     }
-    static resolveCoveringPartialIndexValues(e, n, r) {
+    static resolveCoveringPartialIndexValues(e, n, r) { // e for Model class, n for partial index key, r for parent model
         const s = this.partialIndexInfoForModel(e.modelName).map(a=>a.path)
           , i = [this.createPartialIndexValue(n, r.id)];
         for (const a of s) {
@@ -7976,15 +7977,17 @@ const Ku = class Ku {
     }
     static processPartialIndexInfoForModel(e, n=new Set, r=0) {
         const s = Me.getModelClass(e);
-        if (!s || !s.isPartiallyLoaded)
+        if (!s || !s.isPartiallyLoaded) // Only models whose load strategy is partial are considered.
             return [];
         const i = Me.propertiesOfModel(e)
           , a = [];
         for (const o of Object.keys(i)) {
             const l = i[o];
+            // Search reference properties with referencedProperty.
             if ((l.type === vn.reference || l.type === vn.referenceArray) && l.referencedProperty && l.referencedClassResolver) {
                 const d = l.referencedClassResolver();
-                if (!d.usedForPartialIndexes || d.modelName === e)
+                if (!d.usedForPartialIndexes || d.modelName === e) // 1. The referenced model is not used for partial indexes. 
+                // 2. The referenced model is the same as the current model.
                     continue;
                 if (a.push({
                     path: o,
@@ -7992,6 +7995,8 @@ const Ku = class Ku {
                 }),
                 d.isPartiallyLoaded && r < 3) {
                     n.add(d.modelName);
+                    // Recursively process the referenced model.
+                    // So a model can deep dive into its reference models' reference models (limited to 3 levels).
                     for (const u of this.processPartialIndexInfoForModel(d.modelName, n, r + 1))
                         a.push({
                             path: o.replace(/Id(s?)$/, "") + "." + u.path,
@@ -8007,6 +8012,7 @@ const Ku = class Ku {
 Ku.FULLY_LOADED_INDEX_NAME = "#fullyLoaded#",
 Ku.modelPartialIndexPathsLookup = {},
 Ku.transientPartialIndexedKeys = {};
+/** PartialIndexRegistry */
 let Zn = Ku;
 class Ed extends Error {
     constructor(e, n) {
@@ -8016,9 +8022,9 @@ class Ed extends Error {
     }
 }
 /**
- * LazyReferenceCollectionImpl
+ * LazyReferenceCollection
  */
-class Et extends te { // LazyReferenceCollection
+class Et extends te {
     get elements() {
         return this.isHydrated() || this.hydrate(),
         super.elements
@@ -8041,14 +8047,16 @@ class Et extends te { // LazyReferenceCollection
     }
     constructor(e, n, r, s, i) {
         super(s),
-        this.modelClass = e,
-        this.parent = n,
-        this.index = r,
+        this.modelClass = e, // e.g. `Issue` class
+        this.parent = n, // e.g. `User` object
+        this.index = r, // e.g. "assigneeId"
         this.options = i,
         e.loadStrategy === dn.instant && (this.isHydrationPromiseLocalOnly = !1,
-        this.hydrationPromise = Id)
+        this.hydrationPromise = Id) // If the model's load strategy is instant, it must be loaded into the client during bootstrapping.
+        // So we can set `this.hydrationPromise` to `Id` (resolved promise).
     }
     isHydrated() {
+        // If the hydration promise is resolved and there is no error, it is considered hydrated.
         return !!(this.hydrationPromise && !this.hydrationPromise.error && !this.hydrationPromise.isPending && !this.isHydrationPromiseLocalOnly)
     }
     hydrationFailed() {
@@ -8058,7 +8066,7 @@ class Et extends te { // LazyReferenceCollection
     async isLocallyAvailable() {
         return this.isHydrated() ? !0 : at.store.syncClient.hasModelsForPartialIndexValues(this.modelClass.modelName, this.getCoveringPartialIndexValues())
     }
-    hydrate(e) { // Hydrate a lazy reference.
+    hydrate(e) { // Hydrate a LazyReferenceCollection
         var s, i, a, o;
         if (this.hydrationPromise && (!this.isHydrationPromiseLocalOnly || e != null && e.onlyIfLocallyAvailable))
             return this.hydrationPromise;
@@ -8066,7 +8074,7 @@ class Et extends te { // LazyReferenceCollection
             return this.hydrationPromise = Id,
             this.hydrationPromise;
         this.isHydrationPromiseLocalOnly = this.index && this.parent ? !!(e != null && e.onlyIfLocallyAvailable) && !at.store.localStoreReady(this.modelClass) : !1;
-        const n = this.isHydrationPromiseLocalOnly ? {
+        const n = this.isHydrationPromiseLocalOnly ? { // Final hydration options
             onlyIfLocallyAvailable: !0
         } : {
             onlyIfLocallyAvailable: !1,
@@ -8076,12 +8084,12 @@ class Et extends te { // LazyReferenceCollection
           , r = new Jt(async(l,d)=>{
             var u;
             try {
-                if (this.index && this.parent) {
-                    const h = this.getCoveringPartialIndexValues()
-                      , f = await at.store.hydrateModels(this.modelClass, {
-                        key: this.index,
-                        value: this.parent.id,
-                        coveringPartialIndexValues: h
+                if (this.index && this.parent) { // E.g. index === "assigneeId" and parent === User object
+                    const h = this.getCoveringPartialIndexValues() // Let's figure out what is partial index.
+                      , f = await at.store.hydrateModels(this.modelClass, { // Hydrate Issue model.
+                        key: this.index, // Issue model reference the parent model by `assigneeId`.
+                        value: this.parent.id, // The current user's ID.
+                        coveringPartialIndexValues: h // In this case, userId-<the current user's ID>.
                     }, n);
                     r === this.hydrationPromise && (f === !1 ? (this.isHydrationPromiseLocalOnly = void 0,
                     this.hydrationPromise = void 0) : this.isHydrationPromiseLocalOnly = !1)
@@ -8141,6 +8149,7 @@ class Et extends te { // LazyReferenceCollection
         )
     }
     getCoveringPartialIndexValues() {
+        // parent === 'User' object and index === 'assigneeId'
         return !this.parent || !this.index ? [] : Zn.resolveCoveringPartialIndexValues(this.modelClass, this.index, this.parent)
     }
 }
@@ -8163,7 +8172,7 @@ function Lx(t, e, n, r) {
     i
 }
 let wy;
-const Sm = class Sm {
+const Sm = class Sm { // class BaseLazyReference
     static unwrap(e) {
         return e instanceof Sm ? e.value : e
     }
@@ -8202,8 +8211,8 @@ const Sm = class Sm {
         this._invalidateRejectedWhenRequestedSubscribed = !1
     }
     constructor() {
-        this[wy] = !0,
-        this.observable = !1
+        this[wy] = !0, // LazyRefernce simple
+        this.observable = !1 // When a reference is not hydrated, it is not observable.
     }
 }
 ;
@@ -8239,7 +8248,7 @@ class Qn extends A1 { // LazyReference
         super.value = e,
         e && (this._id = e.id)
     }
-    hydrate(e) {
+    hydrate(e) { // Hydate LazyReference
         return this.isHydrationPromiseLocalOnly 
             && (e == null ? void 0 : e.onlyIfLocallyAvailable) !== !0 
             && (this.hydrationPromise = void 0),
@@ -8248,6 +8257,8 @@ class Qn extends A1 { // LazyReference
             await at.store.hydrateModel(this.referencedClass, { // It actually call ObjectStore.hydrateModel to load a reference.
                 id: this._id
             }, e).then(Le(s=>{
+                // After model is constructed in memory, the callback will be executed to assign the model to this._value.
+                // And since this callback is wrapped using MobX, the view will update to access the model.
                 s && (this.isHydrationPromiseLocalOnly = !1),
                 this._value = s,
                 n(s)
@@ -8766,7 +8777,7 @@ const as = class as { // basic data model class
             for (const o of i) {
                 const l = this[o];
                 if (l instanceof as && l.isHydrated() === !1) {
-                    const d = l.hydrate(e);
+                    const d = l.hydrate(e); // Recursively hydrate another Model.
                     n.push(d)
                 } else if (l instanceof te) { // ReferenceCollection.
                     const d = l.hydrateElements();
@@ -77011,15 +77022,15 @@ Pe([kl({ // lazy reference to documentContent
 })], re.prototype, "documentContent", void 0);
 Pe([pe(()=>ne, "issues", { // back reference to team
     // A team should have many issues. It is an n-1 mapping. ne is actually the class of "Team"
-    optional: !1, // must belong to a team
-    nullable: !1, // must belong to a team
+    optional: !1, // An issue must belong to a team
+    nullable: !1, // An issue must belong to a team
     indexed: !0, // we may want to get all issues of a team
 })], re.prototype, "team", void 0);
 Pe([pe(()=>ct, "issues", {
-    nullable: !0,
-    indexed: !0,
+    nullable: !0, // An issue can belong to no cycle.
+    indexed: !0, // Issue should build index on cycleId. This is related to partial loading.
     onDelete: "SET NULL", // when the cycle is removed, the issue should set it's cycle field to null
-    onArchive: "NO ACTION" // when the cycle is archived, 
+    onArchive: "NO ACTION" // when the cycle is archived, LSE should do nothing
 })], re.prototype, "cycle", void 0);
 Pe([pe(()=>ie, "issues", {
     nullable: !0,
@@ -79178,11 +79189,11 @@ class mm {
     static applyDeltaSyncOnModelObjectCollection(e, n) {
         if (n.length === 0)
             return e;
-        const r = {};
+        const r = {}; // Map id to models.
         for (const a of e)
             r[a.id] = a;
         const s = new Set;
-        for (const a of n)
+        for (const a of n) // Loop though all A D actions, these model will be kept.
             (a.action === "A" || a.action === "D") && s.add(a.modelId);
         let i = !1;
         for (const a of n) {
@@ -79551,7 +79562,11 @@ const Jm = class Jm extends TE {
         return super.getById(e, s)
     }
     async getAllForIndexedKey(e, n, r) {
-        return this.isReady ? await super.getAllForIndexedKey(e, n) : e && (n.coveringPartialIndexValues === void 0 || await this.hasModelsForPartialIndexValues(e, n.coveringPartialIndexValues) || r != null && r.canSkipNetworkHydration && await (r == null ? void 0 : r.canSkipNetworkHydration())) ? await e.getAllFromIndex(this.storeName, n.key, IDBKeyRange.only(n.value)) : "needs_network_hydration"
+        return this.isReady 
+            ? await super.getAllForIndexedKey(e, n) 
+            : e && (n.coveringPartialIndexValues === void 0 || await this.hasModelsForPartialIndexValues(e, n.coveringPartialIndexValues) || r != null && r.canSkipNetworkHydration && await (r == null ? void 0 : r.canSkipNetworkHydration())) 
+                ? await e.getAllFromIndex(this.storeName, n.key, IDBKeyRange.only(n.value)) 
+                : "needs_network_hydration"
     }
     async hasModelsForPartialIndexValues(e, n, r) {
         if (this.isReady)
@@ -81789,11 +81804,11 @@ class _w {
 }
 const yce = 5e3
   , Cce = 10;
-class PE {
+class PE { // BatchLoader
     constructor(e) {
-        this.nextBatch = [],
-        this.uniqueRequests = new Map,
-        this.inflightRequests = new Set,
+        this.nextBatch = [], // Next batch of requests
+        this.uniqueRequests = new Map, // Dedupe next batch of requests with new requests
+        this.inflightRequests = new Set, // Dedupte new request with inflight requests
         this.nextBatchResults = [],
         this.allProcessedResults = [],
         this.allProcessedQueuedResults = [],
@@ -81802,13 +81817,13 @@ class PE {
                 return;
             const n = this.uniqueRequests;
             this.uniqueRequests = new Map,
-            this.inflightRequests.add(n);
+            this.inflightRequests.add(n); // Move uniqueRequests to inflighRequests
             const r = this.nextBatch;
             this.nextBatch = [];
             let s = this.nextBatchResults.concat();
             this.nextBatchResults = [];
             try {
-                const i = await this.handleBatch(r);
+                const i = await this.handleBatch(r); // Send next batch requests.
                 for (const a of s)
                     a.resolve(i.result);
                 if (s = [],
@@ -81848,17 +81863,20 @@ class PE {
         e
     }
     addRequest(e) {
-        const n = this.getInflightRequest(e);
+        const n = this.getInflightRequest(e); // Dedupe requests.
         if (n)
             return n;
+        // Send a batch after batchInternal delay.
         this.nextBatch.length === 0 && setTimeout(this.handleResolve, this.batchInterval);
-        const r = this.serializeKeys(e);
+        const r = this.serializeKeys(e); // We serialize again here. :)
         if (r)
             for (const i of r) {
-                const a = this.uniqueRequests.get(i);
+                const a = this.uniqueRequests.get(i); // If the request is queued but not inflight yet.
                 if (a)
-                    return a
+                    return a // Return here.
             }
+
+        // Create a quest object
         const s = new Promise((i,a)=>{
             this.nextBatch.push({
                 request: e,
@@ -81867,7 +81885,9 @@ class PE {
             })
         }
         );
+        // ...and added it to the unique requests map and queue.
         return r != null && r.length && this.uniqueRequests.set(r[0], s),
+        // If the queue exceeds maxBatchedRequests, immediately request the next batch.
         this.nextBatch.length >= this.maxBatchedRequests && this.handleResolve(),
         s
     }
@@ -81875,6 +81895,7 @@ class PE {
         const n = this.serializeKeys(e);
         if (n)
             for (const r of n)
+                // Check if the model that is going to hydrate is inflight.
                 for (const s of this.inflightRequests) {
                     const i = s.get(r);
                     if (i)
@@ -82338,13 +82359,17 @@ const vce = be.MINUTE * 2
                     return;
                 if (this.store.developerOptions && await this.applyNetworkDeveloperOptions(),
                 this.partialModelLoadedInFull(e)) {
+                    // Load models in full (load all of this model).
                     if ((l = r == null ? void 0 : r.customNetworkHydration) != null && l.call(r))
                         throw new Error("Custom network hydration is not supported for models loaded in full");
+                    // First, load the specific model.
                     await this.batchModelLoader.addRequest({
                         modelClass: e,
                         id: s,
                         coveringPartialIndexValues: i
                     }),
+                    // Na is a setTimeout wrapper in Promise
+                    // Second, load all instances of that model.
                     Na(1).then(()=>this.batchModelLoader.addRequest({
                         modelClass: e,
                         skipCreatingModelsInMemory: !0
@@ -82355,6 +82380,7 @@ const vce = be.MINUTE * 2
                         id: s,
                         coveringPartialIndexValues: i
                     }]
+                        // A hook for use customNetworHypdration instead of the default one.
                       , h = ((d = r == null ? void 0 : r.customNetworkHydration) == null ? void 0 : d.call(r)) || u;
                     await Promise.all(h.map(f=>this.batchModelLoader.addRequest(f)))
                 }
@@ -82363,7 +82389,7 @@ const vce = be.MINUTE * 2
             return this.hydrationBatch.addOperation(o, u=>this.createHydratedModels(e, [u])[0])
         }
     }
-    async hydrateModelsByIndexedKey(e, n, r) { // hydrating implementation
+    async hydrateModelsByIndexedKey(e, n, r) { // e for hydrated model's class, s for indexes, r for options
         var i, a;
         const s = await this.database.getModelDataByIndexedKey(e, n, r);
         if (s === "needs_network_hydration") {
@@ -82759,9 +82785,10 @@ const vce = be.MINUTE * 2
         }) : this.database.getModelDataByIndexedKey(e, n)
     }
     createModelsFromData(e, n) {
+        // This is similar to the last phase of the bootstrapping process.
         return lt(()=>{
-            const r = []
-              , s = e.map(i=>{
+            const r = [] // All constructed models.
+              , s = e.map(i=>{ // All constructed or updated models.
                 const a = Me.getModelClass(i.__class);
                 if (a) {
                     const o = this.findById(a, i.id);
@@ -82779,10 +82806,12 @@ const vce = be.MINUTE * 2
                 }
             }
             ).concrete();
+            // Build references for all models.
             for (const i of s)
                 n != null && n.dependenciesRequireLoading && (i.dependenciesRequireLoading = !0),
                 i.attachToReferencedProperties();
             for (const i of r)
+                // Some models may be waiting for their reference.
                 this.store.delayedRelationManager.resolveDelayedRelation(i);
             return s
         }
@@ -84307,7 +84336,7 @@ function $E(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-class wm extends PE {
+class wm extends PE { // BatchModelLoader
     constructor(e) {
         super({
             batchInterval: 10,
@@ -84335,6 +84364,10 @@ class wm extends PE {
         this.database = n
     }
     async handleBatch(e) {
+        // It divides requests into 3 categories:
+        // 1. SyncGroupRequests
+        // 2. full requests
+        // 3. Normal requests, single model
         const n = e.filter(l=>!this.isSyncGroupRequestEntry(l) && !this.isInFullRequestEntry(l))
           , r = this.filterSyncGroupRequestEntries(e)
           , s = this.filterInFullEntries(e)
@@ -84354,12 +84387,12 @@ class wm extends PE {
         const n = Me.getClassName(e.modelClass);
         return "id"in e ? (r = e.coveringPartialIndexValues) != null && r.length ? [`${n}_${e.id}`, ...e.coveringPartialIndexValues.map(i=>`${n}_partial_${i}`)] : `${n}_${Zn.createPartialIndexValue(e)}` : "syncGroup"in e ? `${n}_syncId_${Zn.createPartialIndexValue(e)}` : "indexedKey"in e ? (s = e.coveringPartialIndexValues) != null && s.length ? [`${n}_partial_${Zn.createPartialIndexValue(e)}`, ...e.coveringPartialIndexValues.map(i=>`${n}_partial_${i}`)] : `${n}_partial_${Zn.createPartialIndexValue(e)}` : `${n}_all_${Zn.createPartialIndexValue(e)}`
     }
-    async loadSyncBatch(e) {
+    async loadSyncBatch(e) { // Load sync batch
         if (e.length === 0)
             return {
                 result: []
             };
-        const n = await this.graphQLClient.restModelsJsonStream("/sync/batch", {
+        const n = await this.graphQLClient.restModelsJsonStream("/sync/batch", { // Send request to server. We cell this method in `fullBoostrap`.
             retry: {
                 times: 2,
                 delayMs: o=>(o + 1) * 250,
@@ -84378,17 +84411,18 @@ class wm extends PE {
             })
         })
           , r = n.syncActions || []
-          , s = mm.applyDeltaSyncOnModelObjectCollection(n.models, r.reverse());
+          , s = mm.applyDeltaSyncOnModelObjectCollection(n.models, r.reverse()); // Apply actions on these models.
         let i = e.every(o=>o.request.skipCreatingModelsInMemory === !0)
           , a = e.every(o=>o.request.skipSavingModelsInDatabase === !0);
-        return i && a && (i = !1,
+        return i && a && (i = !1, // When all requests skip creating models in memory and saving models in database, LSE will not skip them.
+            // In method handleLoadedModels, we will learn we cannot skip both of them.
         a = !1),
-        this.handleLoadedModels(s, e, {
+        this.handleLoadedModels(s, e, { // Handle newly loaded models
             skipCreatingModelsInMemory: i,
             skipSavingModelsInDatabase: a
         })
     }
-    async loadPartialModels(e) {
+    async loadPartialModels(e) { // Send request 
         var l;
         if (e.length === 0)
             return {
@@ -84454,7 +84488,7 @@ class wm extends PE {
             skipCreatingModelsInMemory: s
         })
     }
-    handleLoadedModels(e, n, r) {
+    handleLoadedModels(e, n, r) { // e for loaded models, n for requests, r for options
         if (r != null && r.skipCreatingModelsInMemory && (r != null && r.skipSavingModelsInDatabase))
             throw new Error("Cannot skip creating models in memory and saving models in database at the same time");
         const s = this.database
@@ -84472,11 +84506,13 @@ class wm extends PE {
         });
         const a = ta();
         r != null && r.skipSavingModelsInDatabase || setTimeout(async()=>{
+            // Save the models into database.
             try {
                 if (s) {
                     const d = new Set;
                     for (const u of e)
                         d.add(u.__class);
+                    // Write models into database.
                     await s.writeTransaction({
                         metaStore: !1,
                         syncActionStore: !1,
@@ -84488,6 +84524,7 @@ class wm extends PE {
                         }
                     }
                     ),
+                    // And set partial index value for that model.
                     await Promise.all(n.map(u=>{
                         const h = u.request;
                         return s.setPartialIndexValueForModel(Me.getClassName(h.modelClass), Zn.createPartialIndexValue(h))
@@ -84510,6 +84547,7 @@ class wm extends PE {
         }
         , 1);
         let o = [];
+        // Create models in memory.
         r != null && r.skipCreatingModelsInMemory || (o = i.createModelsFromData(e, {
             dontUpdateExistingModels: !0
         }));
@@ -84517,6 +84555,8 @@ class wm extends PE {
         for (const d of o)
             l[d.id] = d;
         for (const d of n)
+            // When the newly create model are passed to resolve() here, they model
+            // will be assgigned to `LazyReference`.
             d.request.skipCreatingModelsInMemory || ("id"in d.request ? d.resolve(l[d.request.id]) : d.resolve(void 0));
         return {
             result: o,
@@ -84524,12 +84564,14 @@ class wm extends PE {
         }
     }
     isSyncGroupRequestEntry(e) {
+        // There is a syncGroup field in the request object.
         return "syncGroup"in e.request
     }
     filterSyncGroupRequestEntries(e) {
         return e.filter(n=>this.isSyncGroupRequestEntry(n))
     }
     isInFullRequestEntry(e) {
+        // There is no id field in the request object, nor indexedKey nor syncGroup.
         return !("id"in e.request) && !("indexedKey"in e.request) && !("syncGroup"in e.request)
     }
     filterInFullEntries(e) {
