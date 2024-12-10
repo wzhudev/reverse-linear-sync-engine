@@ -7907,7 +7907,7 @@ function Tx(t) {
         e.push(t[n].charAt(0).toUpperCase() + t[n].substr(1));
     return e
 }
-const Ku = class Ku { // PartialIndexRegistry
+const Ku = class Ku { // PartialIndexHelper
     static createPartialIndexValue(e, n) {
         return typeof e == "string" 
             ? e.split(".").at(-1) === "teamId" 
@@ -7923,12 +7923,13 @@ const Ku = class Ku { // PartialIndexRegistry
                         : this.FULLY_LOADED_INDEX_NAME
     }
     static resolveCoveringPartialIndexValues(e, n, r) { // e for Model class, n for partial index key, r for parent model
+        // For example, e == class Comment, n == "issueId", r == Issue instance
         const s = this.partialIndexInfoForModel(e.modelName).map(a=>a.path)
-          , i = [this.createPartialIndexValue(n, r.id)];
+          , i = [this.createPartialIndexValue(n, r.id)]; // ["issueId-xxxxx"]
         for (const a of s) {
             const o = a.split(".");
             if (o.length === 1)
-                continue;
+                continue; // Already included in i.
             let l = r;
             const d = o.shift();
             if (!(d !== n && d !== n.replace(/Id(s?)$/, "")))
@@ -7937,6 +7938,7 @@ const Ku = class Ku { // PartialIndexRegistry
                     if (h instanceof at)
                         l = h;
                     else if (typeof h == "string") {
+                        // Create partial index value for the reference property. For example, team.
                         i.push(this.createPartialIndexValue(a, h));
                         break
                     } else if (Array.isArray(h)) {
@@ -7976,6 +7978,7 @@ const Ku = class Ku { // PartialIndexRegistry
             this.modelPartialIndexPathsLookup[e]
     }
     static processPartialIndexInfoForModel(e, n=new Set, r=0) {
+        // E for modelName, n for 
         const s = Me.getModelClass(e);
         if (!s || !s.isPartiallyLoaded) // Only models whose load strategy is partial are considered.
             return [];
@@ -7997,7 +8000,9 @@ const Ku = class Ku { // PartialIndexRegistry
                     n.add(d.modelName);
                     // Recursively process the referenced model.
                     // So a model can deep dive into its reference models' reference models (limited to 3 levels).
+                    // For example, Issue is also partially loaded, so we will process what issue references.
                     for (const u of this.processPartialIndexInfoForModel(d.modelName, n, r + 1))
+                        // So we find out deeply referenced models here!
                         a.push({
                             path: o.replace(/Id(s?)$/, "") + "." + u.path,
                             referencedModelName: u.referencedModelName
@@ -8012,7 +8017,7 @@ const Ku = class Ku { // PartialIndexRegistry
 Ku.FULLY_LOADED_INDEX_NAME = "#fullyLoaded#",
 Ku.modelPartialIndexPathsLookup = {},
 Ku.transientPartialIndexedKeys = {};
-/** PartialIndexRegistry */
+/** PartialIndexHelper */
 let Zn = Ku;
 class Ed extends Error {
     constructor(e, n) {
@@ -8149,7 +8154,9 @@ class Et extends te {
         )
     }
     getCoveringPartialIndexValues() {
-        // parent === 'User' object and index === 'assigneeId'
+        // Examples:
+        // parent === 'User' object and index === 'assigneeId' 
+        // parent === 'Issue' object and index === 'issueId'
         return !this.parent || !this.index ? [] : Zn.resolveCoveringPartialIndexValues(this.modelClass, this.index, this.parent)
     }
 }
