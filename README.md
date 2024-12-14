@@ -1,11 +1,7 @@
-[[A Reverse Study of Linear Sync Engine]]
+# A Reverse Study of Linear Sync Engine
 
-- [ ] What does `usedForPartialIndexes` and `partialLoadMode` do? It seems relative to bootstrapping and lazy loading.
-- [ ] `referenceOptional` `referencedProperty` 之间的区别是什么.
-- [ ] The difference between a `Reference` and a `BackReference`.
-- [ ] 估计写完博客之后图片需要全部重新截取一遍, Linear 产品的代码还是时常修改的.
-
----
+> [!WARNING]
+> This is still a work in progress. There may be lots of mistakes and misleading.
 
 I specialize in collaborative software, focusing on rich text editors and spreadsheets. **Collaboration engines**, also known as **data sync engines**, play a pivotal role in enhancing user experience. They enable real-time, simultaneous edits on the same file while offering features like offline availability and file history. Typically, engineers use **operational transformation (OT)** or **conflict-free replicated data types (CRDTs)** to build these sync engines. While these technologies are effective for editors and spreadsheets, they may not be ideal for other types of applications. Here's why.
 
@@ -76,7 +72,8 @@ In the following sections, we will discuss these concepts in detail, starting wi
 
 When Linear starts, the first step is to generate metadata for models, including their properties (such as references), methods (actions), and computed values. LSE maintains a detailed dictionary, called `ModelRegistry` (`rr` in the code), to keep track of this metadata.
 
-![[model registry.png]]
+![schema hash](./images/model%20registry.png)
+
 _The names in the screenshots may differ from those in the source code on the GitHub repo, and that’s perfectly fine because Linear has excellent continuous deployment. They nearly ship new code every half hour!_
 
 `ModelRegistry` is a class with static members that store various types of metadata and corresponding methods for registering and retrieving this data. For example:
@@ -89,7 +86,7 @@ _The names in the screenshots may differ from those in the source code on the Gi
 
 ### Model
 
-![[models.png]]
+![models](./images/models.png)
 
 LSE uses `class` to define models, with all model classes extending `BasicModel`, which includes the following properties and methods:
 
