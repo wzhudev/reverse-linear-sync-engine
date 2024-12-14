@@ -63710,7 +63710,7 @@ je([w()], ne.prototype, "description", void 0);
 je([w()], ne.prototype, "icon", void 0);
 je([w()], ne.prototype, "color", void 0);
 je([xe()], ne.prototype, "keys", void 0);
-je([Nt()], ne.prototype, "issues", void 0);
+je([Nt()], ne.prototype, "issues", void 0); // Team lazy references a collection of Issues
 je([xe()], ne.prototype, "emailIntakeAddresses", void 0);
 je([O], ne.prototype, "teamEmailIntakeAddresses", null);
 je([xe()], ne.prototype, "templates", void 0);
@@ -65141,7 +65141,7 @@ Yt([pe(()=>re, "comments", {
     optional: !0,
     nullable: !1,
     indexed: !0
-})], nt.prototype, "issue", void 0);
+})], nt.prototype, "issue", void 0); // Comment also reference an issue
 Yt([Hr(()=>en, "comments", {
     optional: !0,
     nullable: !1,
@@ -79228,7 +79228,7 @@ function ME(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-const Xm = class Xm {
+const Xm = class Xm { // Bootstrap Helper
     static async fullBootstrap(e, n, r, s) { 
         Hi.addStartupSpanTag("fullBootstrap", !0),
         F.network("Full bootstrap");
@@ -79263,7 +79263,8 @@ const Xm = class Xm {
         r && (i += `&syncGroups=${r.join(",")}`),
         (s == null ? void 0 : s.forceNoCache) === !0 && (i += "&noCache=true"),
         s != null && s.firstSyncId && (i += `&firstSyncId=${s.firstSyncId}`);
-        const a = await e.restModelsJsonStream(i)
+        const a = await e.restModelsJsonStream(i) // Partial bootstrapp is very similar to fullBootstrap
+        // except LSE will add parameters syncGroups and lastSyncId
           , o = a.metadata
           , l = a.syncActions || []
           , d = mm.applyDeltaSyncOnModelObjectCollection(a.models, l.reverse())
@@ -79403,9 +79404,14 @@ class TE {
         return this.cachedData ? this.cachedData.find(i=>i.id === s) : e.get(this.storeName, s) // Get the model for cachedData or IndexedDB.
     }
     async getAllForIndexedKey(e, n, r) {
-        return this.cachedData 
+        return this.cachedData
+            // For example, if there are cached data, LSE will try to get call comments whose issueId matches n.value (which is the Issue's id).
             ? this.cachedData.filter(s=>s[n.key] === n.value) 
             : e 
+                // Otherwise it will try to read the database with the Issue's id as index.
+                // Please notice that even if `coveringPartialIndexValues` may have multi entries,
+                // the index used to get data from IndexedDB will be the most direct reference.
+                // For example, get comments with issueId-<xxx>.
                 ? await e.getAllFromIndex(this.storeName, n.key, IDBKeyRange.only(n.value)) 
                 : []
     }
@@ -79573,26 +79579,36 @@ const Jm = class Jm extends TE { // PartialStore
         return super.getById(e, s)
     }
     async getAllForIndexedKey(e, n, r) {
+        // e for Database Proxy
+        // n for { key, value, coveringPartialIndexValues }
+        // n for options
         return this.isReady 
             ? await super.getAllForIndexedKey(e, n) 
-            : e && (n.coveringPartialIndexValues === void 0 || await this.hasModelsForPartialIndexValues(e, n.coveringPartialIndexValues) || r != null && r.canSkipNetworkHydration && await (r == null ? void 0 : r.canSkipNetworkHydration())) 
+            : e && (n.coveringPartialIndexValues === void 0  
+                    || await this.hasModelsForPartialIndexValues(e, n.coveringPartialIndexValues) 
+                    || r != null && r.canSkipNetworkHydration && await (r == null ? void 0 : r.canSkipNetworkHydration())) 
+                // LSE will perform network hydration if
+                // 1. There's no covering partial index
+                // 2. Check if the partial indexed are in the parital_database
+                // 3. can skip network hydration
+                // Otherwise it will try to read the database with the Issue's id as index.
                 ? await e.getAllFromIndex(this.storeName, n.key, IDBKeyRange.only(n.value)) 
                 : "needs_network_hydration"
     }
     async hasModelsForPartialIndexValues(e, n, r) {
         if (this.isReady)
             return !0;
-        if (n.length === 0)
+        if (n.length === 0) // No covering partial index.
             return !1;
         if (r != null && r.requireAll) {
             for (const s of n)
-                // As for "requireAll", if any indexed key cannot be found in IndexedDB, thisd method returns false.
+                // As for "requireAll", if any indexed key cannot be found in partial store, thisd method returns false.
                 if (!await e.get(this.partialIndexStoreName, IDBKeyRange.only(s)))
                     return !1;
             return !0
         } else {
             for (const s of n)
-                // If any indexed key can be found in IndexDB, this method returns true.
+                // If any indexed key can be found in partial store, this method returns true.
                 if (await e.get(this.partialIndexStoreName, IDBKeyRange.only(s)))
                     return !0;
             return !1
@@ -80368,7 +80384,9 @@ const eg = class eg { // class: Database
         if (!this.database)
             return;
         const r = this.storeManager.objectStore(e);
-        n === Zn.FULLY_LOADED_INDEX_NAME ? await r.setIsReady(this.database) : await r.setPartialIndexValue(this.database, n)
+        n === Zn.FULLY_LOADED_INDEX_NAME 
+            ? await r.setIsReady(this.database) // If the models is fully loaded, change model in _metadata as persisted
+            : await r.setPartialIndexValue(this.database, n)
     }
     async flush() {
         if (!(!this.database || !this.storeManager.requiresFlushing))
@@ -81817,7 +81835,7 @@ class _w {
 }
 const yce = 5e3
   , Cce = 10;
-class PE { // BatchLoader
+class PE { // BatchedRequest
     constructor(e) {
         this.nextBatch = [], // Next batch of requests
         this.uniqueRequests = new Map, // Dedupe next batch of requests with new requests
@@ -81905,7 +81923,7 @@ class PE { // BatchLoader
         s
     }
     getInflightRequest(e) {
-        const n = this.serializeKeys(e);
+        const n = this.serializeKeys(e); // Serialize here.
         if (n)
             for (const r of n)
                 // Check if the model that is going to hydrate is inflight.
@@ -82407,24 +82425,29 @@ const vce = be.MINUTE * 2
     }
     async hydrateModelsByIndexedKey(e, n, r) { // e for hydrated model's class, s for indexes, r for options
         var i, a;
+        // The first step is to check if we need to perform a network hydration.
         const s = await this.database.getModelDataByIndexedKey(e, n, r);
         if (s === "needs_network_hydration") {
             if (r != null && r.onlyIfLocallyAvailable)
                 return !1;
             if (this.store.developerOptions && await this.applyNetworkDeveloperOptions(),
-            this.partialModelLoadedInFull(e)) {
+            this.partialModelLoadedInFull(e)) { // If the lazy loaded model should be loaded in full.
                 if ((i = r == null ? void 0 : r.customNetworkHydration) != null && i.call(r))
                     throw new Error("Custom network hydration is not supported for models loaded in full");
                 const d = {
                     modelClass: e,
                     skipCreatingModelsInMemory: !0
                 };
-                await this.batchModelLoader.addRequest(d);
+                await this.batchModelLoader.addRequest(d); 
+
+                // After these models are fetched, LSE will hydrate these models.
                 const u = await this.database.getModelDataByIndexedKey(e, n, r);
                 if (u === "needs_network_hydration")
                     throw new Error("Failed to load models after network full load");
                 return this.hydrationBatch.addOperation(u, h=>this.createHydratedModels(e, h))
             }
+
+            // Request object
             const o = [{
                 modelClass: e,
                 indexedKey: n.key,
@@ -82432,9 +82455,12 @@ const vce = be.MINUTE * 2
                 coveringPartialIndexValues: n.coveringPartialIndexValues
             }]
               , l = ((a = r == null ? void 0 : r.customNetworkHydration) == null ? void 0 : a.call(r)) || o;
+
+            // Add request to batchModelLoader.
             return await Promise.all(l.map(d=>this.batchModelLoader.addRequest(d))),
             !0
         }
+        // If the result if not network hydration, LSE will hydrate these models from the local database.
         return this.hydrationBatch.addOperation(s, o=>this.createHydratedModels(e, o))
     }
     async hydrateLocalModelsByIds(e, n) {
@@ -84381,9 +84407,9 @@ class wm extends PE { // BatchModelLoader
     }
     async handleBatch(e) {
         // It divides requests into 3 categories:
-        // 1. SyncGroupRequests
-        // 2. full requests
-        // 3. Normal requests, single model
+        // 1. SyncGroupRequests (r)
+        // 2. full requests (s)
+        // 3. Normal requests, single model (n)
         const n = e.filter(l=>!this.isSyncGroupRequestEntry(l) && !this.isInFullRequestEntry(l))
           , r = this.filterSyncGroupRequestEntries(e)
           , s = this.filterInFullEntries(e)
@@ -84401,7 +84427,17 @@ class wm extends PE { // BatchModelLoader
     serializeRequest(e) {
         var r, s;
         const n = Me.getClassName(e.modelClass);
-        return "id"in e ? (r = e.coveringPartialIndexValues) != null && r.length ? [`${n}_${e.id}`, ...e.coveringPartialIndexValues.map(i=>`${n}_partial_${i}`)] : `${n}_${Zn.createPartialIndexValue(e)}` : "syncGroup"in e ? `${n}_syncId_${Zn.createPartialIndexValue(e)}` : "indexedKey"in e ? (s = e.coveringPartialIndexValues) != null && s.length ? [`${n}_partial_${Zn.createPartialIndexValue(e)}`, ...e.coveringPartialIndexValues.map(i=>`${n}_partial_${i}`)] : `${n}_partial_${Zn.createPartialIndexValue(e)}` : `${n}_all_${Zn.createPartialIndexValue(e)}`
+        return "id"in e 
+            ? (r = e.coveringPartialIndexValues) != null && r.length 
+                ? [`${n}_${e.id}`, ...e.coveringPartialIndexValues.map(i=>`${n}_partial_${i}`)] 
+                : `${n}_${Zn.createPartialIndexValue(e)}` 
+            : "syncGroup"in e 
+                ? `${n}_syncId_${Zn.createPartialIndexValue(e)}` 
+                : "indexedKey"in e 
+                    ? (s = e.coveringPartialIndexValues) != null && s.length 
+                        ? [`${n}_partial_${Zn.createPartialIndexValue(e)}`, ...e.coveringPartialIndexValues.map(i=>`${n}_partial_${i}`)] 
+                        : `${n}_partial_${Zn.createPartialIndexValue(e)}` 
+                    : `${n}_all_${Zn.createPartialIndexValue(e)}`
     }
     async loadSyncBatch(e) { // Load sync batch
         if (e.length === 0)
@@ -84438,7 +84474,7 @@ class wm extends PE { // BatchModelLoader
             skipSavingModelsInDatabase: a
         })
     }
-    async loadPartialModels(e) { // Send request 
+    async loadPartialModels(e) {
         var l;
         if (e.length === 0)
             return {
@@ -84466,6 +84502,7 @@ class wm extends PE { // BatchModelLoader
         }
         const i = await Promise.all(r.map(async d=>{
             var u;
+            // Call database.loadPartialModels
             return (u = this.database) == null ? void 0 : u.loadPartialModels([...d.modelName], [...d.syncGroups]).catch(h=>{
                 throw F.error("Partial load models query error", h, {
                     modelNames: [...d.modelName]
@@ -84487,11 +84524,17 @@ class wm extends PE { // BatchModelLoader
             return {
                 result: []
             };
-        const n = new Set;
+        const n = new Set; // Models that will be loaded eventually
         for (const o of e) {
             const l = Me.getClassName(o.request.modelClass);
-            l && (await ((i = this.database) == null ? void 0 : i.hasModelsForPartialIndexValues(l, [Zn.createPartialIndexValue(o.request)])) || n.add(l))
+            l && (await ((i = this.database) == null 
+                ? void 0 
+                // Maybe this model has been loaded by previous requests?
+                // Basically this repeats what has been checked in `getModelDataByIndexedKey`.
+                : i.hasModelsForPartialIndexValues(l, [Zn.createPartialIndexValue(o.request)])) || n.add(l)
+            )
         }
+        // Call `Database.loadPartialModels`.
         const r = await ((a = this.database) == null ? void 0 : a.loadPartialModels([...n]).catch(o=>{
             throw F.error("Partial load models query error", o, {
                 modelNames: [...n]
@@ -84499,6 +84542,7 @@ class wm extends PE { // BatchModelLoader
             o
         }
         ))
+        // It can skip creating models in memory only when every requests skip creating models in memory.
           , s = e.every(o=>o.request.skipCreatingModelsInMemory === !0);
         return this.handleLoadedModels(r ?? [], e, {
             skipCreatingModelsInMemory: s
@@ -84550,7 +84594,7 @@ class wm extends PE { // BatchModelLoader
                 for (const d of n)
                     d.request.skipCreatingModelsInMemory && d.resolve(void 0);
                 await Na(1e3),
-                a.resolve()
+                a.resolve() // Will resolve the promise when the response is fully persisted.
             } catch (d) {
                 for (const u of n)
                     u.request.skipCreatingModelsInMemory && u.resolve(void 0);
