@@ -5,7 +5,7 @@
 
 I specialize in collaborative software, focusing on rich text editors and spreadsheets. **Collaboration engines**, also known as **data sync engines**, play a pivotal role in enhancing user experience. They enable real-time, simultaneous edits on the same file while offering features like offline availability and file history. Typically, engineers use **operational transformation (OT)** or **conflict-free replicated data types (CRDTs)** to build these sync engines. While these technologies are effective for editors and spreadsheets, they may not be ideal for other types of applications. Here's why.
 
-OT is widely recognized for its complexity. This stems from the need to account for diverse data models and operation sets across different applications, which requires significant effort to implement accurate operations and transformation functions. While OT excels at synchronizing edits, preserving user intent, and handling conflicts, its complexity often makes it overkill for simpler use cases—such as managing user information or file metadata—where a straightforward **last-writer-wins** approach might suffice.
+OT is widely adopted but notorious for its complexity. This complexity stems from the need to account for diverse data models and operation sets across different applications, which requires significant effort to implement accurate operations and transformation functions. While OT excels at synchronizing edits, preserving user intent, and handling conflicts, its complexity often makes it overkill for simpler use cases—such as managing user information or file metadata—where a straightforward **last-writer-wins** approach might suffice.
 
 CRDTs, on the other hand, appear more user-friendly. They offer built-in support for fundamental data structures (e.g., texts, lists, maps, counters), reducing the workload for developers. However, CRDTs often introduce metadata overhead and become challenging to manage in scenarios involving partial syncing or permission controls—such as when users can only access a subset of files. These issues arise because CRDTs are primarily designed for decentralized systems, while most modern applications still depend on centralized servers. Although I am personally an advocate of CRDTs, they often fall short for some practical use cases.
 
@@ -41,21 +41,23 @@ To assist you in understanding the raw code, I’ve uploaded a copy of Linear’
 
 If you haven’t yet watched Tuomas’ [two talks](https://www.youtube.com/watch?v=WxK11RsLqp4&t=2175s), a [podcast](https://www.devtools.fm/episode/61), and a [recent presentation](https://www.youtube.com/watch?v=VLgmjzERT08) at Local First Conf about LSE, I highly recommend checking them out before continuing. That said, here are the core concepts behind LSE:
 
-![Simple Architecture](introduction.png)
+![Simple Architecture](./images/introduction.png)
 
-### Model
+Model
 
-Entities such as "Issue," "Team," "Organization," and "Comment" are **models** in LSE. Models have **properties** and **references** to other models, many of which are observable (via **MobX**) to automatically refresh views when changes occur. Models can be bootstrapped from the **local** database (IndexedDB) or the server (via **full bootstrapping**). Operations (additions, deletions, updates) on these models, their properties, and references are sent to the server as **transactions**, which are then broadcast as **deltas** to other connected clients to ensure data consistency across multiple copies.
+Entities such as "Issue," "Team," "Organization," and "Comment" are **models** in LSE. Models have **properties** and **references** to other models, many of which are observable (via **MobX**) to automatically refresh views when changes occur. Models can be loaded from the **local** database (IndexedDB) or the server. Some models are **partially loaded** and are **hydrated** (from the local database or the server) on demand.
 
-### Transaction
+Operations (additions, deletions, updates) on these models, their properties, and references are sent to the server as **transactions**, which are then broadcast as **deltas** to other connected clients to ensure data consistency across multiple copies.
+
+Transaction
 
 Operations sent to the server are encapsulated as **transactions**. These transactions are designed to execute _only_ on the server and may fail, so they are reversible (on the client). If the client loses connection to the server, transactions are cached in IndexedDB and resent once the client is back online.
 
-### Delta
+Delta
 
-After transactions are executed, the server broadcasts "deltas" to all clients (including the one that sent the transactions) to update the models. Deltas may not be identical to the original transactions sent by the client, as the server may perform side effects (such as generating history) during execution.
+After transactions are executed, the server broadcasts **deltas** to all clients (including the one that sent the transactions) to update the models. Deltas may not be identical to the original transactions sent by the client, as the server may perform side effects (such as generating history) during execution. Each delta packet is associated with a last sync id. It's a monotonically increasing number that helps LSE to determine the order of delta packages, and ensuring that the client won't miss any updates, or if missed, can determine the missing ones.
 
-### Sync Engine
+Sync Engine
 
 The **Sync Engine** consists of key modules responsible for tasks such as:
 
@@ -70,11 +72,16 @@ In the following sections, we will discuss these concepts in detail, starting wi
 
 ### `ModelRegistry`
 
-When Linear starts, the first step is to generate metadata for models, including their properties (such as references), methods (actions), and computed values. LSE maintains a detailed dictionary, called `ModelRegistry` (`rr` in the code), to keep track of this metadata.
+> [!NOTE]
+> Please refer to the following:
+>
+> - `ModelRegistry` (`rr`)
+
+When Linear starts, the first step is to generate metadata for models, including their properties (such as references), methods (actions), and computed values. LSE maintains a detailed dictionary, called `ModelRegistry`, to keep track of this metadata.
 
 ![schema hash](./images/model%20registry.png)
 
-_The names in the screenshots may differ from those in the source code on the GitHub repo, and that’s perfectly fine because Linear has excellent continuous deployment. They nearly ship new code every half hour!_
+_The names in the screenshots may differ from those in the source code on the GitHub repo, and that’s perfectly fine because Linear seems to have excellent continuous deployment - they nearly ship every half an hour!_
 
 `ModelRegistry` is a class with static members that store various types of metadata and corresponding methods for registering and retrieving this data. For example:
 
@@ -114,7 +121,7 @@ Models' metadata includes:
     - **`local`**: Models persisted only in the local database. I couldn’t find any models that use this strategy.
 3. **`partialLoadMode`**: This property has three possible values: `full`, `regular`, and `lowPriority`. This will determine how a model will be hydrated.
 
-Currently, there are 76 models in Linear.
+At the time I created this repo, there were 76 models in Linear.
 
 ![[count of models.png]]
 
@@ -127,7 +134,7 @@ LSE uses TypeScript decorators to register metadata in the `ModelRegistry`. One 
 re = Pe([We("Issue")], re);
 
 // In the source code, it may be something like:
-@Model("Issue")
+@ClientModel("Issue")
 class Issue {}
 ```
 
@@ -135,9 +142,6 @@ In the implementation of `Model` :
 
 1. The model’s name and constructor function are registered in `ModelRegistry`'s `modelLookup`.
 2. The model’s name, schema version, and property names are combined into a **hash value**, which is registered in `ModelRegistry` and used to check the database schema. If the model’s `loadStrategy` is `partial`, this information is also included in the hash.
-
-> [!NOTE]
-> When discussing the implementation, it is highly recommended to also read the code.
 
 ### Properties
 
@@ -178,10 +182,10 @@ Pe([w({
 })], re.prototype, "priority", void 0);
 
 // In the source code, it may looks like:
-@Model("Issue")
+@ClientModel("Issue")
 class Issue {
   @Property({ serializer: PrioritySerializer })
-  priority: Priority;
+  public priority: Priority;
 }
 ```
 
@@ -203,7 +207,7 @@ Pe([pe(()=>K, "assignedIssues", {
 st([Nt()], K.prototype, "assignedIssues", void 0);
 
 // In the source code, it may looks like:
-@Model("Issue")
+@ClientModel("Issue")
 class Issue {
  @Reference(() => User, "assignedIssues", {
    nullable: true,
@@ -212,7 +216,7 @@ class Issue {
  assignee: User | null;
 }
 
-@Model("User")
+@ClientModel("User")
 class User {
   @LazyReferenceCollection()
   assignedIssues: LazyReferenceCollectionImpl;
@@ -255,7 +259,7 @@ Pe([rt], re.prototype, "moveToTeam", null);
 Pe([O], re.prototype, "parents", null);
 
 // The source code would be something like:
-@Model("Issue")
+@ClientModel("Issue")
 class Issue {
   @Action
   moveToTeam() {
@@ -294,7 +298,7 @@ Now, let's discuss how Linear bootstraps. We'll begin with an overview to give y
 
 - [ ] A graph to show relationship of these models
 
-Some criticial modules includes:
+Some critical modules includes:
 
 1.
 
@@ -585,7 +589,7 @@ Yt([pe(()=>re, "comments", {
 })], nt.prototype, "issue", void 0);
 
 // The possible source code may look like:
-@Model()
+@ClientModel()
 class Comment extends BaseModel {
   @Reference(() => Issue, "comments", {
     optional: true,
@@ -667,17 +671,19 @@ If LSE doesn't need to perform a network hydration, it will query the IndexedDB 
 >   - `loadPartialModels`
 >   - `setPartialIndexValueForModel`
 
-`BatchModelLoader` , as its name suggests, batch a group of network hydration requests to a single GraphQL request. We will not discuss deduping and...
+`BatchModelLoader`, as its name suggests, batch a group of network hydration requests to a single GraphQL request. We will not discuss how it dedupe requests here, but we will focus on how it handles the batch.
 
 In method `handleBatch`, Linear will divide requests into 3 categories:
 
-1. Requests that is associated to a `SyncGroup`, which we will cover in the next section.
+1. Requests that is associated to a `SyncGroup`.
 2. Requests loading models that should be loaded in full.
-3. Other requests
+3. Other requests.
 
-And LSE will call different methods to load different categories of requests, respectively `loadPartialModels`, `loadFullModels` and `loadSyncBatch`.
+It is not easy to figure out how `SyncGroup` works in early versions. But recently, Linear team added `userSyncGroup` and `teamSyncGroup` in the source code which made me suddenly realized that `SyncGroup` is actually a group of models that are associated to a User or a Team.
 
-In `loadSyncBatch`, it will call `GraphQLClient.resetModelsJsonStream` to send a request to `https://client-api.linear.app/sync/batch`, the body will be like:
+LSE will call different methods for different categories of requests, respectively `loadPartialModels`, `loadFullModels` and `loadSyncBatch`.
+
+In `loadSyncBatch`, it will call `GraphQLClient.resetModelsJsonStream` to send a request to `https://client-api.linear.app/sync/batch`, the request body will be like:
 
 ```json
 {"requests":[{"id":"6f14ab52-ed51-4db8-a981-c04620683218","skipSavingModelsInDatabase":false,"modelName":"Issue"}]}
@@ -690,51 +696,70 @@ And the response will be like:
 _metadata_={"returnedModelsCount":{"Issue":1}}
 ```
 
-Does this response looks familiar to you? Yes, this is also the format of the responding of a full bootstrapping! Later in 'handleLoadedModels', this response wil be parsed, models will be written into the database and created in memory. And what is also important is that the partial index of the request will also get saved into the database.
+Does this response looks familiar to you? Yes, this is also the format of the responding of a full bootstrapping. Later in 'handleLoadedModels', this response will be parsed, models will be written into the database and created in memory. And what is also important is that the **partial index of the request will also get saved into the database**, so the next time LSE tries to hydrate this model, it can skip the network hydration.
 
-#### `SyncGroup`
+In `loadFullModels`, thing
 
-_For a long time this remains unknown to me..._
+_Here it becomes clear that SyncActionStore plays an important of role of syncing models!_ As
 
-### Takeaway of this chapter
+这里已经搞清楚了, 但是还没有写完
 
-## Chapter 3: Syncing to the Server
+#### `firstSyncId` and `lastSyncId`
 
-In the final part, we would talk about how LSE sync between clients and the server. What exactly happens when we change the assignee of an issue? How does LSE manage undo/redo functionality, networking, error handling, offline caching, and many other details within these two lines?
+写到这里其实会剧透一些 transaction 相关的逻辑, `firstSyncId` `lastSyncId`
+
+或许会疑惑为什么有了 lastSyncId 这里还需要一个 firstSyncId 呢？
+
+### Takeaway of Chapter 2
+
+## Chapter 3: Syncing Changes
+
+In the previous chapter, we have learned how LSE load existing models from the server. From this chapter, we will talk about how LSE syncs changes of models between clients and the server. Let's get started with this question: What happens when we change the assignee of an Issue? How does LSE manage undo/redo functionality, networking, error handling, offline caching, and many other details underneath these two lines?
 
 ```jsx
 issue.assignee = user;
 issue.save();
 ```
 
-### The Whole Picture
-
-First, let's review the entire process, then we can delve into the details.
+I will just tell you about the entire process, then we can delve into details.
 
 ![[Pasted image 20241009161445.png]]
 
-1. When a property is assigned a value, decorators will bookkeeper what property has been changed and what the new value and the old value are (1), and perhaps also update back references.
-2. Once `save()` is called, the model call `SyncedStore` , subsequently `SyncedClient` and `TransactionQueue` to generate a n `Transaction` (2).
-3. The generated transaction is pushed into a queue (sometimes sent immediately) and saved into the `__transactions` table in IndexedDB (3). `TransactionQueue` schedule a timer to repeatedly sending these pending transactions to the server.
-4. Later, it is sent to the backend along with other transactions in a batch, a process known as transaction execution (4).
-5. If the transaction is accepted by the backend, it is removed from the `__transactions` table (5) (6).
-6. Subsequently, the backend sends a delta to `SyncClient` (7), informing clients of changes made on the server. `SyncClient` rebases transactions that haven't been accepted by the server, modifies in-memory models (8), and updates the tables in IndexedDB (9).
+1. When a property is assigned a value, the changed property' name, as well as the new value and the old value is recorded. Models in memory are updated immediately (1).
+2. Once `save()` is called, the model call `SyncedStore`, subsequently `SyncedClient` and `TransactionQueue` to generate a n `Transaction` based on the changed properties (2).
+3. The `Transaction` is then pushed into `TransactionQueue` and saved into the `__transactions` table in IndexedDB (3). `TransactionQueue` schedule a timer (sometimes immediately) to send queued transactions to the server in a batch (4).
+4. If the transaction is accepted by the backend, it will be removed from the `__transactions` table (5) (6).
+5. Subsequently, the backend sends a delta to `SyncClient` (7), informing clients of changes made on the server. `SyncClient` rebases transactions that haven't been accepted by the server, modifies in-memory models (8), and updates the tables in IndexedDB (9).
 
-### Find Out What Has Been Changed
+Alright, let's dive into the details.
+
+### Generating Transactions
 
 - `M1`
 - `as#propertyChanged`
 - `as#markPropertyChanged`
 - `as#referencedPropertyChanged`
 - `as#updateReferencedModel`
+- `sg.save`: `SyncedStore.save`
+- `ng.update`: `SyncClient.update`
+- `uce.update`: `TransactionQueue.update`
 
-As we have discussed in section "Observability", LSE uses a decorator `M1` to make a property observable. It also plays a critical part in generating transactions. When a property of a model is assigned with a new value, the setter would intercept the assignment and call `propertyChanged` to record the name of that property, the old value and the new value. `markPropertyChanged` would then be called to serialize the old value and store it in `modifiedProperties`.
+As we have discussed in section "Observability", LSE uses function `M1` to make a property observable. It also plays a critical part in generating transactions. When a property of a model is assigned with a new value, the setter would intercept the assignment and call `propertyChanged` to record the name of that property, the new value and the old value. `markPropertyChanged` would then be called to serialize the **old value** and store it in `modifiedProperties`.
 
-<aside>
-💡 In addition to
-</aside>
+Note that before `save()` is called, models in memory have already been updated. The transactions has nothing to do with the in-memory models.
 
-### Generate Transactions
+When the model object's `save` method is called, it invokes `SyncedStore.save`, and subsequently `SynClient.update`. If the model exists in `SyncClient`, an `UpdateTransaction` is generated. During the construction of `UpdateTransaction`, the model's `changeSnapshot` function is called. Ultimately, an object is generated to represent the changes:
+
+```json
+{ 
+  "assigneeId" {
+    "original": null,
+    "unoptimizedUpdated": undefined,
+    "updatedFrom": null,
+    "updated": "4e8622c7-0a24-412d-bf38-156e073ab384"
+  }
+}
+```
 
 There are various types of transactions:
 
@@ -742,72 +767,89 @@ There are various types of transactions:
 | -------------- | ----------------------- | ----------------------------------------------------------------------- |
 | `M3` `Zo`      | `BaseTransaction`       | The base class of all transactions.                                     |
 | `Hu`           | `CreationTransaction`   | The transaction to add an model.                                        |
-| `zu`           | `UpdateTransaction`     | The transaction to update properties on an existing model.              |
-| `g3`           | `DeleteTransaction`     | The transaction to delete a model. E.g. deleting a comment of an issue. |
-| `m3`           | `ArchiveTransaction`    | The transaction to archive a model. E.g. deleting an issue.             |
+| `zu`           | `UpdatingTransaction`   | The transaction to update properties on an existing model.              |
+| `g3`           | `DeletionTransaction`   | The transaction to delete a model. E.g. deleting a comment of an issue. |
+| `m3`           | `ArchivalTransaction`   | The transaction to archive a model. E.g. deleting an issue.             |
 | `y3`           | `UnarchiveTransaction`  | The transaction to unarchive a model.                                   |
 
-`uce` (`TransactionQueue`) provides methods to create and execute transactions. But how does LSE determine which type of transaction it should generate, and what is the content of a transaction?
+`uce` (`TransactionQueue`) provides methods to create transactions. It is also responsible for managing transactions and sending them to the server. `TransactionQueue` contains four arrays of transactions.
 
-When the model object's `save` method is called, it invokes the `save` method of `SyncedStore`. If the model exists in `SyncClient`, an `UpdateTransaction` is generated. During the construction of `UpdateTransaction`, the model’s `changeSnapshot` function is called. Ultimately, an object is generated to represent the changes:
+1. `createdTransactions`: When a transaction is queued, it first goes to `createdTransactions`. A `commitCreatedTransactions` scheduler periodically moves all transactions in this array to the end of `queuedTransactions`.
+2. `queuedTransactions`: These transactions are pushed to a queue, waiting to be executed. Transactions will be saved into `__transactions` local database when are are move to `queuedTransactions`. So if there is network issue, or the application get closed before the queued transactions are send, the client can load these transactions from `__transactions` store and retry the next time the application starts.
+3. `executingTransactions`: These transactions have been sent to the server but have not been accepted (nor rejected) yet. `TransactionQueue` has a `dequeueTransaction` scheduler that periodically moves transactions from `queuedTransactions` to `executingTransactions` in a FIFO manner.
 
-```jsx
+<!-- No, my explanation on this queue is not correct. -->
+
+4. `completedButUnsyncedTransactions` These transactions have been sent to the server and accepted, but the corresponding delta has not been received. When a set of transactions from `executingTransactions` is executed, they are removed from `executingTransactions` and pushed to `completedButUnsyncedTransactions`. Note that `completedButUnsyncedTransactions` are removed from `__transactions` in IndexedDB.
+
+And there is one more special array called `persistedTransactionsEnqueue`. When the database bootstraps, transactions saved in `__transactions` would be loaded into this array. After remote updates have been processed, they are moved to `queueTransactions` and waiting to be executed. During processing remove updates, these transactions may need to rebase on deltas.
+
+At any given moment, transactions in `completedButUnsyncedTransactions` must be created earlier than those in `executingTransactions`, and the same applies to any other two arrays. This is important because the sequence plays a role when rebasing transactions.
+
+### Execute Transactions
+
+> [!NOTE]
+> Please refer to the following:
+>
+> - `uce.dequeueNextTransactions`:
+> - `zu.graphQLMutation`
+> - `as.updateMutation`:
+> - `uce.executeTransactionBatch`:
+> - `dce.execute`:
+
+Before sending a batch of transactions to the server, they should be converted into GraphQL mutating queries. Each transaction object has a `graphQLMutation` function to generate these queries, and bind it to the `graphQLMutationPrepared` property of that transaction. For example, updating the assignee of an issue would generate a query like this:
+
+```json
 {
-  assigneeId: {
-    original: this.modifiedProperties[n],
-    updatedFrom: this.modifiedProperties[n],
-    updated: i,
-    unoptimizedUpdated: s
+  "mutationText": "issueUpdate(id: \"a3dad63b-8302-4f1f-a874-a80e6d9ed418\", input: $issueUpdateInput) { lastSyncId }",
+  "variables": {
+    "issueUpdateInput": {
+      "assigneeId": "4e8622c7-0a24-412d-bf38-156e073ab384"
+    }
+  },
+  "variableTypes": {
+    "issueUpdateInput": "IssueUpdateInput"
   }
 }
 ```
 
-### Transaction Queue
+Prepared transactions will later be executed in a batch by `executeTransactionBatch`. LSE will create a `TransactionExecutor` to execute these transactions. Queries are then used in `TransactionExecutor.execute` to create a GraphQL request:
 
-`TransactionQueue` use four arrays to manage transactions.
+```json
+{
+  "query": "mutation IssueUpdate($issueUpdateInput: IssueUpdateInput!) { 
+    issueUpdate(id: \"a3dad63b-8302-4f1f-a874-a80e6d9ed418\", input: $issueUpdateInput) { lastSyncId } 
+  }",
+  "variables": {
+    "issueUpdateInput": {
+      "assigneeId": "4e8622c7-0a24-412d-bf38-156e073ab384"
+    }
+  },
+  "operationName": "IssueUpdate"
+}
 
-1. `createdTransactions` When a transaction is queued, it first goes to `createdTransactions`. A `commitCreatedTransactions` scheduler periodically moves all transactions in this array to the end of `queuedTransactions`.
-2. `queueTransactions` These transactions are pushed to a queue, waiting to be executed. Transactions would all be saved into `__transactions` when are are move to `queuedTransactions` .
-3. `executingTransactions` These transactions have been sent to the server but have not been accepted yet. The `TransactionQueue` has a `dequeueTransaction` scheduler that periodically moves transactions from `queuedTransactions` to `executingTransactions` in a FIFO manner.
-4. `completedButUnsyncedTransactions` These transactions have been sent to the server and accepted, but the corresponding delta has not been received. When a set of transactions from `executingTransactions` is executed, they are removed from `executingTransactions` and pushed to `completedButUnsyncedTransactions`. Note that `completedButUnsyncedTransactions` are removed from `__transactions` in IndexedDB.
-5. `persistedTransactionsEnqueue` When the database bootstraps, transactions saved in `__transactions` would be loaded into this array. After remote updates have been processed, they are moved to `queueTransactions` and waiting to be executed. During processing remove updates, these transactions may need to rebase on deltas.
-
-At any given moment, transactions in `completedButUnsyncedTransactions` must be created earlier than those in `executingTransactions`, and the same applies to any other two arrays. This is important because the sequence plays a role when rebasing transactions.
-
-### Generating GraphQL Mutating Queries
-
-Before sending a batch of transactions to the server, it is converted into GraphQL mutating queries. Each transaction calls the `prepare` function to generate parameters (there are a lot of details but I am not going to cover in this post). These parameters are then used in `TransactionExecutor.execute` to create the query path and parameters.
-
-```jsx
-mutation IssueUpdate($issueUpdateInput: IssueUpdateInput!) {
-  issueUpdate(id: "a8e26eed-7ad4-43c6-a505-cc6a42b98117", input: $issueUpdateInput
-) { lastSyncId } }
 ```
 
-```jsx
+```json
 {
-    "issueUpdateInput": {
-        "assigneeId": "e86b9ddf-819e-4e77-8323-55dd488cb17c"
+  "data": {
+    "issueUpdate": {
+      "lastSyncId": 3273967562
     }
+  }
 }
 ```
 
-## Part 4: Syncing from the Server
+### Deltas
 
-Delta from the server would be executed in the `applyDelta` method. After we modified the assignee, the delta would look like this:
+> [!NOTE]
+> Please refer to the following functions:
+>
+> - `ng.applyDelta`:
 
-A delta includes one or more actions, each identified by an `action` type. The current types are:
+After a client sends a GraphQL mutation query to the server, the server will broadcast delta packets to all clients (including the one who sends the transaction). A client will build a Web Socket connection to the server to receive these delta packets when the application starts.
 
-1. `I` for insertion
-2. `U` for updating
-3. `A` for archiving
-4. `D` for deleting
-5. `C` remains unknown
-6. `G` remains unknown
-7. `S` remains unknown
-8. `V` remains unknown
-
-For the updating action, LSE broadcasts all properties of the model, not just the changed ones. The model’s `updateFromData` would be called to update all properties.
+The delta packets contain changes happened on the server. For example, if the assignee of an issue is changed, a client will receive delta packets like this:
 
 ```jsx
 [
@@ -876,6 +918,19 @@ For the updating action, LSE broadcasts all properties of the model, not just th
 ];
 ```
 
+A delta packet includes one or more actions, each identified by an `action` type. All possible types are:
+
+1. `I` for insertion
+2. `U` for updating
+3. `A` for archive
+4. `D` for deletion
+5. `C` for covering
+6. `G` for changing SyncGroups
+7. `S` for changing SyncGroups
+8. `V` for unarchive
+
+`ng.applyDelta` is responsible for handling delta packets. 
+
 When applying a delta, it might conflict with local changes (transactions). For updating actions and transactions, LSE needs to rebase transactions onto the model modified by the action. This starts with the `TransactionQueue.rebaseTransactions` method.
 
 LSE rebase all transactions in a specific order: `completedButUnsyncedTransactions`, `executingTransactions`, `queuedTransactions`, and `persistedTransactionsEnqueue`, as mentioned earlier. In terms of rebasing, it:
@@ -885,7 +940,7 @@ LSE rebase all transactions in a specific order: `completedButUnsyncedTransactio
 
 As Tuomas mentioned in his talk, this follows a last-writer-wins strategy.
 
-### Side effects on the server
+### Server Logic
 
 If you made any changes offline and then reload the page, it may seem that the changes are lost. However, they are not. The transactions are stored in the database and will be sent to the server once you are back online. **Linear does not apply these transactions locally as they are designed to be executed only on the backend.** In other words, the frontend and backend use different methods to update data. The backend needs to check authentication, generate history records, send emails, and so on. Linear refers to these as 'side effects'.
 
@@ -919,9 +974,11 @@ n.title !== d &&
 
 When an edit is made, the UI calls `UndoQueue.addOperation` to have `UndoQueue` subscribe to the next `transactionQueuedSignal` and create an undo item. This signal is triggered when transactions are added to `queuedTransactions`. The subscription ends when a callback finishes execution. What is in that callback? It is `save()`, our old friend! So when we perform an undo, although the signal is triggered, since `UndoQueue` is not listening to it, no extra undo item will be created.
 
-### Add, Delete and Archive
+### Insertion, Deletion and Archival
 
 For `DeleteTransaction`, `ArchiveTransaction`, and `UnarchiveTransaction`, there are specific methods on models to generate these transactions. We would not take a deeper investigation into them.
+
+TODO: not finished
 
 ### Takeaway
 
@@ -935,9 +992,9 @@ A quick summary of this part:
 
 ## Conclusion
 
-Thanks for joinning me in this journey of reversing LSE!
+Thanks for joining me in this journey of reversing LSE!
 
-# Appendix A: Minimized and Possible Original Names Lookup
+## Appendix A: Minimized and Possible Original Names Lookup
 
 | Minimized names                                                                                                                                         | Possible original names                                                     | Description                                                                                                                                                                    |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

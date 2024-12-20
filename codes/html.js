@@ -7918,7 +7918,7 @@ const Ku = class Ku { // PartialIndexHelper
                 // TODO: what are indexedKey and syncGroup used for?
                 : "indexedKey"in e 
                     ? this.createPartialIndexValue(e.indexedKey, e.keyValue.toString()) 
-                    : "syncGroup"in e 
+                    : "syncGroup"in e // SyncGroup is a Team or a User
                         ? this.createPartialIndexValue("teamId", e.syncGroup) 
                         : this.FULLY_LOADED_INDEX_NAME
     }
@@ -8543,6 +8543,16 @@ const as = class as { // basic data model class
         return Object.keys(this.modifiedProperties)
     }
     updateMutation(e, n, r={}) {
+        // TODO: what is this e? It is a Set of what?
+        // n for an array of change descriptors. e.g.
+        // [{ 
+        //   "assigneeId" {
+        //     "original": null,
+        //     "unoptimizedUpdated": undefined,
+        //     "updatedFrom": null,
+        //     "updated": "4e8622c7-0a24-412d-bf38-156e073ab384"
+        //   }
+        // }]
         const s = `${this.modelName}UpdateInput`
           , i = {};
         for (const f in n.changes) {
@@ -8551,8 +8561,8 @@ const as = class as { // basic data model class
         }
         if (Object.keys(i).length === 0)
             return;
-        const a = this.isSingletonModel ? "" : `id: "${this.id}", `
-          , o = `${Zl(this.modelName)}Update`;
+        const a = this.isSingletonModel ? "" : `id: "${this.id}", ` // id: "id-of-the-changed-model"
+          , o = `${Zl(this.modelName)}Update`; // IssueUpdate
         let l = 1
           , d = `${o}Input`;
         for (; e.has(d); )
@@ -8578,11 +8588,12 @@ const as = class as { // basic data model class
     deleteMutation() {
         return `${Zl(this.modelName)}Delete(id: "${this.id}") { lastSyncId }`
     }
-    markPropertyChanged(e, n) {
+    markPropertyChanged(e, n) { // e for the name of the changed property, n for the new value
         const r = this.properties[e];
         if ((r.persistance === ee.updateOnly || r.persistance === ee.createAndUpdate) && !(e in this.modifiedProperties) && !this.ignoreUpdates) {
-            const s = this.serializedValue(e, n)
-              , i = this.serializedValue(e, this[e]);
+            // Check if the value really changes by comparing the serialized values.
+            const s = this.serializedValue(e, n) // new value serilaized
+              , i = this.serializedValue(e, this[e]); // old value serialized
             s !== i && (this.modifiedProperties[e] = s)
         }
     }
@@ -8903,6 +8914,7 @@ const as = class as { // basic data model class
                 , 5)))
             } else
                 this.markPropertyChanged(e, n);
+            // Also, if the property is a reference, update the referenced model.
             s.referencedProperty && this.referencedPropertyChanged(s.referencedProperty, n, r)
         }
     }
@@ -32636,6 +32648,7 @@ function xe() {
 }
 /**
  * LazyReferenceCollection decorator
+ * \@OneToMany
  */
 function Nt(t) {
     return (e,n)=>{
@@ -32661,6 +32674,7 @@ function pe(t, e, n) {
 
 /**
  * LazyReference decorator
+ * \@ManyToOne
  */
 function Hr(t, e, n) {
     return (r,s)=>{
@@ -42914,7 +42928,7 @@ const Bm = class Bm extends It {
             }],
             canSkipNetworkHydration: ()=>this.store.syncClient.hasModelsForPartialIndexValues(re.modelName, this.project.accessibleTeams.map(n=>Zn.createPartialIndexValue({
                 modelClass: ne,
-                syncGroup: n.id
+                syncGroup: n.id // N is team here
             })), {
                 requireAll: !0
             })
@@ -62280,7 +62294,7 @@ const I3 = class I3 extends Xc {
         this.issues = new Et(re,this,"projectId",new de("sortOrder"),{
             canSkipNetworkHydration: ()=>this.store.syncClient.hasModelsForPartialIndexValues(re.modelName, this.accessibleTeams.map(n=>Zn.createPartialIndexValue({
                 modelClass: ne,
-                syncGroup: n.id
+                syncGroup: n.id // n is team here
             })), {
                 requireAll: !0
             })
@@ -64332,7 +64346,7 @@ function st(t, e, n, r) {
 }
 const lv = be.MINUTE * 5
   , $te = be.HOUR * 2
-  , A3 = class A3 extends at {
+  , A3 = class A3 extends at { // A3 or K is "User"
     get initials() {
         return d_(this.name)
     }
@@ -79262,7 +79276,7 @@ const Xm = class Xm { // Bootstrap Helper
         let i = `/sync/bootstrap?type=partial&onlyModels=${n.join(",")}`;
         r && (i += `&syncGroups=${r.join(",")}`),
         (s == null ? void 0 : s.forceNoCache) === !0 && (i += "&noCache=true"),
-        s != null && s.firstSyncId && (i += `&firstSyncId=${s.firstSyncId}`);
+        s != null && s.firstSyncId && (i += `&firstSyncId=${s.firstSyncId}`); // Which basically means: please give me models since action
         const a = await e.restModelsJsonStream(i) // Partial bootstrapp is very similar to fullBootstrap
         // except LSE will add parameters syncGroups and lastSyncId
           , o = a.metadata
@@ -79659,6 +79673,7 @@ class oce {
         n.delete(this.storeName)
     }
     async getRemovedModelIds(e, n, r) {
+        // r for lastSyncId
         if (this.storeIsEmpty)
             return [];
         const s = ta()
@@ -79668,7 +79683,7 @@ class oce {
             const l = o.result;
             if (l) {
                 const d = l.value;
-                d.syncId >= r && i.push(d.id),
+                d.syncId >= r && i.push(d.id), // filter actions whose syncId is larger than the lastSyncId
                 l.continue()
             } else
                 s.resolve(i)
@@ -79693,8 +79708,13 @@ class oce {
     addSyncPacket(e, n) {
         if (this.storeIsEmpty = !1,
         n.action === "I" || n.action === "V" || n.action === "U")
+            // Insert, Update, Unacrhive action
+            // We remove the model from SyncActionStore
             n.modelId && e.delete(n.modelId);
         else if (n.action === "A" || n.action === "D") {
+            // Archive and Deletion Action
+            // Insert the action to the Store
+            // So this store basically stores what models have been removed.
             const r = {
                 id: n.modelId,
                 modelName: n.modelName,
@@ -80364,7 +80384,7 @@ const eg = class eg { // class: Database
             syncDeltaPackets: r
         }
     }
-    async loadPartialModels(e, n) {
+    async loadPartialModels(e, n) { // Database.loadPartialModels
         if (e.length === 0)
             return [];
         const r = await Oo.partialBootstrap(this.graphQLClient, e, n, {
@@ -80372,7 +80392,7 @@ const eg = class eg { // class: Database
         });
         let s;
         return this.database && (s = await this.getRemovedModelIds(e, r.lastSyncId)),
-        r.data.filter(i=>!(s != null && s.has(i.id || "")))
+        r.data.filter(i=>!(s != null && s.has(i.id || ""))) // Filter models that not removed since.
     }
     async hasModelsForPartialIndexValues(e, n, r) {
         return this.database !== void 0 && this.storeManager.objectStore(e).hasModelsForPartialIndexValues(this.database, n, r)
@@ -80410,7 +80430,7 @@ const eg = class eg { // class: Database
           , i = this.database.transaction([s], "readwrite", {
             durability: "relaxed"
         });
-        for (const a of e)
+        for (const a of e) // e for modelNames
             r.push(...await this.storeManager.syncActionStore.getRemovedModelIds(i, a, n));
         return await i.done,
         new Set(r)
@@ -80534,7 +80554,7 @@ class ww {
 
 // #region Transactions
 /** Base Transaction */
-const M3 = class M3 {
+const M3 = class M3 { // BaseTransaction
     constructor(e, n, r, s, i) {
         this.retries = 0,
         this.id = M3.nextId++,
@@ -80564,11 +80584,16 @@ const M3 = class M3 {
     static setNextId(e) {
         this.nextId = e
     }
-    async transactionCompleted(e, n=0) {
+    async transactionCompleted(e, n=0) { 
+        // e for error, it could be undefined
+        // n for lastSyncId
         this.syncIdNeededForCompletion = n,
         e ? (this.rollback(),
+        // If there's an execution error, that means the server has rejected
+        // this transaction, so LSE should undo it.
         this.reject(e)) : (await this.syncClient.waitUntilSyncId(n),
         this.resolve(0))
+        // If there's no error, we should update the lastSyncId.
     }
     offlined() {
         this.resolve(1)
@@ -80655,6 +80680,9 @@ class m3 extends Zo {
         this.model.attachToReferencedProperties()
     }
 }
+/**
+ * Local transcation
+ */
 class Tc {
     constructor(e) {
         this.model = e
@@ -80780,7 +80808,7 @@ class g3 extends Zo {
 }
 const lce = 8;
 /** TransactionExecutor */
-class dce {
+class dce { // Transaction executor. Execute many transactions in a batch.
     constructor(e, n) {
         this.transactions = e,
         this.graphQLClient = n,
@@ -80797,27 +80825,31 @@ class dce {
         try {
             const n = this.transactions.length === 1;
             let r = this.transactions[0].graphQLOperationName;
-            // several transactions
-            if (!n) {
+            if (!n) { // If there are 2 or more transactions in this batch.
+                // Count different graphQLOperationName
                 const d = this.transactions.reduce((u,h)=>{
                     const f = h.graphQLOperationName;
                     return u[f] ? u[f] += 1 : u[f] = 1,
                     u
                 }
                 , {});
+                // And join graphQLOperationName in a string. For example:
+                // IssueUpdates_UserUpdate
                 r = Object.keys(d).map(u=>u + (d[u] > 1 ? "s" : "")).join("_")
             }
+            // Join variable types.
             const s = this.transactions.flatMap(d=>Object.entries(d.graphQLMutationPrepared.variableTypes || {}).map(([u,h])=>`$${u}: ${h}!`)).join(", ")
               , i = this.transactions.reduce((d,u)=>({
                 ...d,
                 ...u.graphQLMutationPrepared.variables
             }), {})
               , a = `mutation ${r}${s ? `(${s})` : ""} { ${this.transactions.map((d,u)=>(n ? "" : `o${u + 1}:`) + (typeof d == "string" ? d : d.graphQLMutationPrepared.mutationText)).join(", ")} }`
-              , o = await this.graphQLClient.mutate(a, i, { // IMPORATNT send the mutation to the server
+              , o = await this.graphQLClient.mutate(a, i, { // Send the request to the server
                 logUserErrors: !0
             })
+                // Get the max lastSyncId
               , l = Object.keys(o).reduce((d,u)=>Math.max(d, o[u].lastSyncId), 0);
-            for (const d of this.transactions)
+            for (const d of this.transactions) // Resolve call transaction.
                 d.transactionCompleted(void 0, l);
             this.resolve()
         } catch (n) {
@@ -80963,7 +80995,7 @@ class zu extends Zo { // update transaction
         if (this.changeSnapshot) {
             const e = {};
             for (const n in this.changeSnapshot.changes)
-                e[n] = this.changeSnapshot.changes[n].original;
+                e[n] = this.changeSnapshot.changes[n].original; // get all original values
             lt(()=>{
                 this.model.updateFromData(e) // dump old values into the model when rollback
             }
@@ -81009,6 +81041,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
         r
     }
     update(e, n) {
+        // e for the updated client model object
         const r = new zu(e,this.batchIndex,this.syncClient,this.graphQLClient,n == null ? void 0 : n.additionalUpdateArgs);
         return n != null && n.sendSynchronously && this.transactionIsIndependentOfRunningTransactions(r) ? this.immediatelyExecuteTransaction(r) : this.enqueueTransaction(r),
         e.didUpdate(),
@@ -81177,29 +81210,36 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
         this.commitCreatedTransactions.schedule(async()=>{
             this.batchIndex++;
             const n = this.createdTransactions.concat();
-            this.createdTransactions = [],
-            await this.database.putTransactions(n), // save all queue transactions into database (offline cache)
+            this.createdTransactions = [], // Empty created transactions.
+            await this.database.putTransactions(n), // Save all queue transactions into database (offline cache)
             this.queuedTransactions.push(...n), // move createdTransactions to queuedTransactions
             this.outstandingTransactionCountChanged(),
-            this.dequeueNextTransactions()
+            this.dequeueNextTransactions() // Schedule the next query.
         }
         )
     }
     dequeueNextTransactions() {
         this.dequeueTransaction.schedule(()=>{
-            if (this.queuedTransactions.length === 0 || this.executingTransactions.length >= kw) // max 40 transactions in the queue
+            // If there are no queued transacation or more than 40 transcation are executing,
+            // skip this.
+            if (this.queuedTransactions.length === 0 || this.executingTransactions.length >= kw)
                 return;
-            let e = 0;
+            let e = 0; // Limit a batch's size.
             const n = this.queuedTransactions[0].batchIndex
               , r = []
               , s = new Set;
-            for (; e < xw && this.queuedTransactions.length > 0 && r.length < kw && this.queuedTransactions[0].batchIndex === n && this.transactionIsIndependentOfRunningTransactions(this.queuedTransactions[0]); ) {
+            for (; e < xw 
+                && this.queuedTransactions.length > 0 
+                && r.length < kw // 40
+                && this.queuedTransactions[0].batchIndex === n // Transactions belong to the same batch
+                && this.transactionIsIndependentOfRunningTransactions(this.queuedTransactions[0]); 
+            ) {
                 const i = this.queuedTransactions[0];
                 if (!i)
                     break;
                 let a, o;
                 try {
-                    a = i.prepare(s)
+                    a = i.prepare(s) // Prepare that transaction, generating GraphQL query
                 } catch (d) {
                     F.error("Error preparing transaction", d, {
                         transaction: {
@@ -81214,7 +81254,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
                         userError: !1
                     })
                 }
-                if (!a) {
+                if (!a) { // If there's no transaction, LSE will just omit that transaction.
                     i.transactionCompleted(o),
                     this.database.deleteTransaction(i.id),
                     this.queuedTransactions.shift();
@@ -81224,7 +81264,7 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
                 if (e > 0 && e + l > xw)
                     break;
                 for (const d of Object.keys(a.graphQLMutationPrepared.variables || {}))
-                    s.add(d);
+                    s.add(d); // Add key to the Set. For example "issueUpdateInput"
                 this.queuedTransactions.shift(),
                 r.push(a),
                 e += l
@@ -81251,9 +81291,10 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
             this.executingTransactions = this.executingTransactions.concat(e);
             try {
                 if (await new dce(e,this.graphQLClient).execute() === Ro.offlined) {
+                    // If the execution failed, put them back to queuedTransactions
                     this.executingTransactions = this.executingTransactions.filter(s=>!e.includes(s)),
                     this.queuedTransactions.unshift(...e),
-                    this.outstandingTransactionCountChanged(); // this outstanding naming seems inspired by ot.js
+                    this.outstandingTransactionCountChanged(); 
                     return
                 }
             } catch {}
@@ -81273,7 +81314,8 @@ class uce { // class TranscactionQueue, like collaborative ediring controller in
 }
 // #endregion
 const Dw = 1e3;
-class OE {
+/** WaitSyncQueue */
+class OE { // WaitSyncQueue
     wait(e) {
         return this.token >= e ? Promise.resolve() : new Promise(n=>{
             this.queue.push({
@@ -82210,11 +82252,7 @@ const vce = be.MINUTE * 2
             this.modelClassToArchivedModelLookup[i] = new Set,
             this.modelClassToTemporaryModelLookup[i] = new Set;
 
-        // subscribe to socket events
-        // when the user uploaded transaction would also become a delta here
-        // and modify the database
-        // in other word, when user changed something, the new data would not be persisted 
-        // until the transaction is accepted by the server and the delta is sent to local
+        // Subscribe to socket events
         this.socket.onSyncMessage.subscribe(async i=>{
             try {
                 await this.applyDelta(i.sync, i.lastSyncId)
@@ -82273,6 +82311,7 @@ const vce = be.MINUTE * 2
         this.modelClassToTemporaryModelLookup[e.modelName].delete(e)
     }
     update(e, n) {
+        // Call the transcation queue to generate a 
         const r = this.transactionQueue.update(e, n);
         return e.isArchived && this._onArchiveUpdate.fire(e),
         this.handleTransactionOffline(r, n == null ? void 0 : n.offlineError),
@@ -82721,6 +82760,8 @@ const vce = be.MINUTE * 2
         return this.transactionQueue.transactionsForModel(e)
     }
     async waitUntilSyncId(e) {
+        // hs is related to demo
+        // let's ignore that
         hs || this.lastSyncId >= e || await this.syncWaitQueue.wait(e)
     }
     applyArchiveResponse(e) {
@@ -82947,13 +82988,13 @@ const vce = be.MINUTE * 2
                     switch (f.addSyncPacket(m),
                     p.shouldApplyRemoval(m) === !0 && await p.applyRemovalsToDatabase(f),
                     m.action) {
-                    case "I":
-                    case "V":
-                    case "U":
+                    case "I": // Insertion
+                    case "V": // Unarchive
+                    case "U": // Updation
                         f.put(m.modelName, m.data),
                         this.transactionQueue.modelUpserted(m.modelId);
                         break;
-                    case "C":
+                    case "C": // Covering partial data
                         const g = await f.get(m.modelName, m.modelId);
                         g ? (Object.assign(g, m.data),
                         f.put(m.modelName, g)) : F.error("Did not have model for C packet", void 0, {
@@ -82961,14 +83002,14 @@ const vce = be.MINUTE * 2
                             modelName: m.modelName
                         });
                         break;
-                    case "A":
+                    case "A": // Archival
                         p.scheduleModelRemoval("archival", m.modelName, m.modelId, m.id);
                         break;
-                    case "D":
+                    case "D": // Deletion
                         p.scheduleModelRemoval("deletion", m.modelName, m.modelId, m.id);
                         break;
                     case "G":
-                    case "S":
+                    case "S": // Change SyncGroups
                         const b = this.changedSyncGroups(m.data.syncGroups, this.subscribedSyncGroups).removedGroups.filter(k=>a.has(k));
                         b.length && await this.removeSyncGroups(b, f, p, m.id);
                         break
@@ -84100,11 +84141,10 @@ const sg = class sg { // class SyncedStore
     async waitForSync() {
         return await this.syncClient.waitForSync()
     }
-    save(e, n=!1, r) { // Determined what kind of transaction need to be dispatched.
+    save(e, n=!1, r) { // Determined what kind of transaction need to be dispatched in this funciton.
         // e for the model that changed
         return this.saveForLocalTransaction(e, r) 
             ? new Tc(e)  // If it should be a local transaction. It would return from here.
-
             : (e.shouldSetUpdatedAt && (e.updatedAt = new Date),
         this.syncClient.findById(at, e.id, {
             excludeTemporaryModels: !0
@@ -84407,9 +84447,9 @@ class wm extends PE { // BatchModelLoader
     }
     async handleBatch(e) {
         // It divides requests into 3 categories:
-        // 1. SyncGroupRequests (r)
-        // 2. full requests (s)
-        // 3. Normal requests, single model (n)
+        // 1. SyncGroupRequests (r). When 'syncGroup' is in the request object. -> loadPartialModels
+        // 2. full requests (s). When there's no id, nor indexKey nor syncGroup are provided. -> loadFullModels
+        // 3. Requests by id or indexedKey (n) -> loadSyncBatch
         const n = e.filter(l=>!this.isSyncGroupRequestEntry(l) && !this.isInFullRequestEntry(l))
           , r = this.filterSyncGroupRequestEntries(e)
           , s = this.filterInFullEntries(e)
@@ -84475,18 +84515,43 @@ class wm extends PE { // BatchModelLoader
         })
     }
     async loadPartialModels(e) {
+        // For syncGroup requests
         var l;
         if (e.length === 0)
             return {
                 result: []
             };
-        const n = {};
+        const n = {}; // Load models by syncGroup, for example
+        // {
+        //   "Issue": [
+        //     "89388c30-9823-4b14-8140-4e0650fbb9eb"
+        //   ],
+        //   "Attachment": [
+        //     "89388c30-9823-4b14-8140-4e0650fbb9eb"
+        //   ]
+        // }
         for (const d of e) {
             const u = Me.getClassName(d.request.modelClass);
-            u && (await ((l = this.database) == null ? void 0 : l.hasModelsForPartialIndexValues(u, [Zn.createPartialIndexValue(d.request)])) || (n[u] = (n[u] || []).concat(d.request.syncGroup)))
+            u && (await ((l = this.database) == null 
+                ? void 0 
+                : l.hasModelsForPartialIndexValues(u, [Zn.createPartialIndexValue(d.request)])) 
+                    || (n[u] = (n[u] || []).concat(d.request.syncGroup)))
         }
         const r = []
-          , s = {};
+        // [
+        //   {
+        //     "modelName": {}, // "Issue", "Attachment"
+        //     "syncGroups": {} // "89388c30-9823-4b14-8140-4e0650fbb9eb"
+        //   }
+        // ]
+          , s = {}; // Load tasks by syncGroup
+        //   
+        // {
+        //   "89388c30-9823-4b14-8140-4e0650fbb9eb": {
+        //     "modelName": {}, // "Issue", "Attachment"
+        //     "syncGroups": {} // "89388c30-9823-4b14-8140-4e0650fbb9eb"
+        //   }
+        // }
         for (const [d,u] of Object.entries(n)) {
             const h = u.join(",");
             if (s[h])
