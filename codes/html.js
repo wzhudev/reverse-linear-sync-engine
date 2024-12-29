@@ -81010,7 +81010,7 @@ class zu extends Zo { // update transaction
 
 const kw = 40
   , xw = 9e6;
-class uce { // class TranscactionQueue, like collaborative ediring controller in OT
+class uce { // class TranscactionQueue
     get onTransactionCountChange() {
         return this._onTransactionCountChange
     }
@@ -82252,7 +82252,7 @@ const vce = be.MINUTE * 2
             this.modelClassToArchivedModelLookup[i] = new Set,
             this.modelClassToTemporaryModelLookup[i] = new Set;
 
-        // Subscribe to socket events
+        // Subscribe to web socket message channel
         this.socket.onSyncMessage.subscribe(async i=>{
             try {
                 await this.applyDelta(i.sync, i.lastSyncId)
@@ -82311,7 +82311,7 @@ const vce = be.MINUTE * 2
         this.modelClassToTemporaryModelLookup[e.modelName].delete(e)
     }
     update(e, n) {
-        // Call the transcation queue to generate a 
+        // Call the transcation queue to generate a transaction
         const r = this.transactionQueue.update(e, n);
         return e.isArchived && this._onArchiveUpdate.fire(e),
         this.handleTransactionOffline(r, n == null ? void 0 : n.offlineError),
