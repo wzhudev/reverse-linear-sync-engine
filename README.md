@@ -1,6 +1,7 @@
 # A Reverse Study of Linear Sync Engine
 
-> [!WARN] WORK IN A PROGRESS
+> [!WARN]
+> WORK IN A PROGRESS
 
 I work on collaborative softwares, focusing on rich text editors and spreadsheets. **Collaboration engines**, also known as **data sync engines**, play a pivotal role in enhancing user experience in these softwares. They enable real-time, simultaneous edits on the same file while offering features like offline availability and file history. Typically, engineers use **[Operational Transformation (OT)](https://en.wikipedia.org/wiki/Operational_transformation)** or **[Conflict-free Replicated Data Types (CRDTs)](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type)** to build sync engines. While these technologies are effective for editors and spreadsheets, they may not be ideal for other types of applications. Here's why.
 
@@ -23,7 +24,8 @@ issue.save();
 
 I believe LSE is exactly what I've been looking for, so I decided to reverse-engineer its frontend code to understand how it works. Additionally, I'm documenting my findings to help others who are interested as I am.
 
->[!INFO] Good References
+>[!INFO]
+> Good References
 >
 >This [gist](https://gist.github.com/pesterhazy/3e039677f2e314cb77ffe3497ebca07b#gistcomment-5184039) introduces some off-the-shelf solutions, such as ElectricSQL and ZeroSync (which, BTW, I am also very curious about), for general-purpose synchronization. You might want to check them out as well.
 
@@ -81,7 +83,8 @@ In the following chapters, we will explore these concepts in detail, along with 
 
 ### `ModelRegistry`
 
-> [!NOTE] Code References
+> [!NOTE]
+> Code References
 >
 > - `rr`: `ModelRegistry`
 
@@ -89,7 +92,8 @@ When Linear starts, it first generates metadata for models, including their prop
 
 ![model registry](./imgs/model-registry.png)
 
->[!INFO] Uglified Names 
+>[!INFO]
+> Uglified Names
 >
 > The names in the screenshots (`Xs` for example) may differ from those in the source code available on the GitHub repository (`rr`). This is completely normal, as Linear's outstanding continuous deployment pipeline enables them to ship updates nearly every half hour!
 
@@ -104,14 +108,16 @@ We will discuss how some of this metadata is registered, focusing particularly o
 
 ### Model
 
-> [!NOTE] Code References
+> [!NOTE] 
+> Code References
 > 
 > - `We`: `ClientModel` decorator
 > - `as`: `Model` base model class
 > - `re` `Vs`: `Issue` model class
 > - `rr.registerModel`: `ModelRegistry.registerModel`
 
-![[models.png]]
+![](./imgs/models.png)
+
 LSE uses JavaScript's `class` keyword to define models, with all model classes extending the base `Model` class. This base class provides the following key properties and methods:
 
 - **`id`**: A unique UUID assigned to each model, serving as the key for retrieving the model from the Object Pool.
@@ -121,7 +127,9 @@ LSE uses JavaScript's `class` keyword to define models, with all model classes e
 - **`propertyChanged`, `markPropertyChanged`, `changeSnapshot`**: Methods that track property changes and generate an `UpdateTransaction`.
 - **etc.**: Additional important properties and methods will be discussed in subsequent chapters.
 
-> [!NOTE] **Changes to `_mobx`**  
+> [!NOTE] 
+> **Changes to `_mobx`**  
+> 
 > During the writing of this post, the Linear team updated how properties are stored. The `_mobx` object was removed, and each model now includes a `__data` property to store property values. This change impacts the implementation of certain decorators and the hydration process. However, the core concept remains unchanged, so I have not revised the related sections of this post.
 
 Models' metadata includes:
@@ -141,7 +149,9 @@ In the next chapter, we will explore how this metadata influences the loading be
 
 _When I started writing this post, there were 76 models in Linear. As I am about to finish, there are 80 models._
 
-> [!NOTE] **What is `local` used for in a sync engine like Linear Sync Engine?**  
+> [!NOTE] 
+> **What is `local` used for in a sync engine like Linear Sync Engine?**  
+> 
 > During his presentation at Local First Conf, Tuomas explained how new features can be developed without modifying server-side code. This is accomplished by setting the load strategy to `local` for any new model, ensuring that it persists or boots only in the local IndexedDB. Once the model is finalized, syncing is enabled by changing its load strategy from `local` to one of the other strategies.
 
 LSE uses **TypeScript decorators** to register metadata in `ModelRegistry`. The decorator responsible for registering models' metadata is `ClientModel` (also known as `We`).
@@ -168,7 +178,9 @@ You can refer to the source code for more details about how `ClientModel` works.
 
 ### Properties
 
-> [!NOTE] Code References
+> [!NOTE]
+> Code References
+>
 > - `vn`: `PropertyTypeEnum`
 > - `w`: `Property` decorator
 > - `pe`: `Reference` decorator
@@ -278,7 +290,7 @@ In the implementation of the `Reference` decorator (more specifically, the `regi
 2. LSE uses a getter and setter to link `assigneeId` and `assignee`. When the `assignee` value is set, `assigneeId` is updated with the new value's `ID`. Similarly, when `assignee` is accessed, the corresponding record is fetched from the data store using the `ID`.
 3. Additionally, `assigneeId` is made observable with `M1`.
 
-![[Pasted image 20250125095420.png]]
+![model property lookup](./imgs/model-property-lookup.png)
 
 _There are lots of `referenceModel` and `reference` pairs in the `ModelRegistry`._
 
@@ -286,14 +298,17 @@ _There are lots of `referenceModel` and `reference` pairs in the `ModelRegistry`
 
 `ModelRegistry` includes a special property called **`__schemaHash`**, which is a hash of all models' metadata and their properties' metadata. This hash is crucial for determining whether the local database requires migration, a topic covered in detail in a later chapter. I have already added comments in the source code explaining how it is calculated, so I won’t repeat that here.
 
-> [!INFO] TypeScript Decorators  
+> [!INFO] 
+> TypeScript Decorators  
+>
 > When TypeScript transpiles decorators, it processes property decorators before model decorators. As a result, property decorators are executed first. By the time `ModelRegistry.registerModel` is called, all properties of that model have already been registered, and their metadata will also be included in the `__schemaHash`.
 
 ### Observability (`M1`)
 
-> [!NOTE] Code References
+> [!NOTE]
+> Code References
+>
 > - `M1`: `observabilityHelper`
-
 
 The `M1` function plays a critical role in making models and properties observable.
 
@@ -305,23 +320,11 @@ Additionally, when setting the value, the `propertyChanged` method is called to 
 
 Check the source code for more details.
 
+### Takeaway of Chapter 1
 
+Here’s a quick summary of what we’ve learned:
 
+- Models and properties in LSE are governed by metadata that defines their behavior.
+- LSE leverages decorators to register various elements—models, properties, and references—within the `ModelRegistry`.
+- LSE uses `Object.defineProperty` to implement getters and setters, enabling reference handling and observability for properties, and thereby for models.
 
-
-
-
-
-
-
-
-
-
-
-
----
-
-- **`save`**: Generates an `UpdateTransaction` when called.
-- Methods ending with **`Mutation`**, such as `updateMutation`, generate GraphQL mutation queries.
-- **`updateFromData`**: Dumps serialized values into a model. LSE does not pass arguments to the constructor when creating a model; instead, it calls this method.
-- **`attachToReferencedProperties`**: Attaches all reference properties of a model.

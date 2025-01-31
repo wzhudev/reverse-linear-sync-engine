@@ -79735,6 +79735,8 @@ class oce { // SyncActionStore is used to store delta packets' elements.
         r
     }
     addSyncPacket(e, n) {
+        // e for a database connection
+        // n for sync action
         if (this.storeIsEmpty = !1,
         n.action === "I" || n.action === "V" || n.action === "U")
             // Insert, Update, Unacrhive action
