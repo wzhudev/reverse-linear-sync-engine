@@ -918,3 +918,519 @@ Let's sum up what we've learned in chapter 2:
 - There are three different bootstrapping types: full, partial and local.
 - LSE uses `lastSyncId` to determine the sequence of transactions and help clients to find out if it misses incremental updates from the server.
 - LSE can lazily hydrate models into memory from the server or the local database.
+
+
+## Chapter 3: Transactions
+
+In the previous chapter, we explored how LSE loads existing models from the server. Now, we’ll shift our focus to how LSE synchronizes changes between clients and the server. Specifically, this chapter will cover how client-side changes are synced to the server.
+
+Let’s start with a fundamental question: **What happens when we change the assignee of an Issue?** How does LSE manage networking, error handling, offline caching, and other underlying complexities—all within just two lines of code?
+
+```jsx
+issue.assignee = user;
+issue.save();
+```
+
+![[transaction-overview.png]]
+
+Let’s start by getting a high-level overview of the process before diving into the details in the sections below.
+
+72. **Property Assignment and Immediate Updates**  
+    When a property is assigned a new value, the system records three key pieces of information:
+    - The name of the changed property
+    - The new value
+    - The old value
+    **Models in memory** are updated **immediately** to reflect these changes.
+73. **Generating an `UpdateTransaction`**  
+    When `issue.save()` is called, an `UpdateTransaction` is created. This transaction is based on the properties that have been modified.
+74. **Queueing and Storing Transactions**  
+    The generated `Transaction` is then added to a request queue within the `TransactionQueue`. Simultaneously, it is saved into the `__transactions` table in IndexedDB for persistence.
+75. **Scheduling and Sending Batches**  
+    The `TransactionQueue` schedules timers (sometimes triggering them immediately) to send queued transactions to the server in batches. This batching mechanism helps optimize network efficiency.
+76. **Successful Execution and Cleanup**  
+    Once a batch is successfully processed by the backend, it is removed from the `__transactions` table in IndexedDB. Additionally, the Local Storage Engine (LSE) clears the cached batch to free up resources.
+77. **Propagating Changes to Clients**  
+    Finally, the server sends delta batches to all connected clients. These delta packets:
+    - Update the database models
+    - Modify metadata
+    - Resolve any pending transactions
+
+### Figuring out what has been changed
+
+> [!note]  
+> **Code References**
+> 
+> - `M1`: The decorator used to add observability to LSE models.
+>     
+> - `as.propertyChanged`: `ClientModel.propertyChanged`
+>     
+> - `as.markPropertyChanged`: `ClientModel.markPropertyChanged`
+>     
+> - `as.referencedPropertyChanged`: `ClientModel.referencedPropertyChanged`
+>     
+> - `as.updateReferencedModel`: `ClientModel.updateReferencedModel`
+>     
+
+As discussed in the [Observability](https://chat.deepseek.com/a/chat/s/fd61116c-cfd9-4043-b25e-8fdc7900b48b#observability-\(m1\)) section, LSE leverages the `M1` function to make model properties observable. Beyond enabling observability, `M1` also plays a pivotal role in transaction generation.
+
+Here’s how it works:
+
+When a property of a model is assigned a new value, the setter intercepts the assignment and triggers `propertyChanged`. This function records:
+
+- The name of the property    
+- The new value
+- The old value
+
+Next, `markPropertyChanged` is called to serialize the **old value** and store it in `modifiedProperties`. Later, it will be used to generate a transaction.
+
+![[modified-properties.png]]
+
+Before `save()` is called, the **model in memory has already been updated**! Transactions are **not** responsible for updating in-memory models—this happens immediately when a property is changed. However, transactions do play a role in **undo** and **redo** operations and updateing in-memory models. We’ll dive deeper into this topic in **Chapter 5**.
+
+### Generating an `UpdateTransaction`
+
+> [!note] Code References
+> - `as.save`: `ClientModel.save`
+>- `sg.save`: `SyncedStore.save`
+>- `ng.update`: `SyncClient.update`
+>- `uce.update`: `TransactionQueue.update`
+>
+
+Chains of calling in this section:
+
+```typescript
+as.save
+  -> sg.save
+    -> ng.update
+```
+
+If the model exists in the Object Pool, an `UpdateTransaction` will be generated. During the construction of `UpdateTransaction`, the model's `changeSnapshot` function will be called. Ultimately, an object is generated to represent the changes and bound to `changeSnapshot` property of `UpdateTransaction`. 
+
+%% TODO: add a snapshot to demonstrate what the object will look like. %%
+
+![[Pasted image 20241229175450.png]]
+
+```json
+{ 
+  "assigneeId" {
+    "original": null,
+    "unoptimizedUpdated": undefined,
+    "updatedFrom": null,
+    "updated": "4e8622c7-0a24-412d-bf38-156e073ab384"
+  }
+}
+```
+
+An `UpdateTransaction` has the following properties:
+- `retries`: indicates how many times the client has tried to send the transaction to the server;
+- `type`: type of transaction.
+- `model`: the in-memory model object this transaction is related to 
+- `batchIndex`: each transaction has a `batchIndex`. Transactions that have the same `batchIndex` will be sent to the server in batch.
+
+Besides `UpdatingTransaction`, there are 4 kinds of transactions and `TransactionQueue` provides corresponding methods to construct them. But in this post, let's foucs on `UpdatingTransaction` solely.
+
+| Minimized name | Possible original names | Description                                                             |
+| -------------- | ----------------------- | ----------------------------------------------------------------------- |
+| `M3` `Zo`      | `BaseTransaction`       | The base class of all transactions.                                     |
+| `Hu`           | `CreationTransaction`   | The transaction to add an model.                                        |
+| `zu`           | `UpdatingTransaction`   | The transaction to update properties on an existing model.              |
+| `g3`           | `DeletionTransaction`   | The transaction to delete a model. E.g. deleting a comment of an issue. |
+| `m3`           | `ArchivalTransaction`   | The transaction to archive a model. E.g. deleting an issue.             |
+| `y3`           | `UnarchiveTransaction`  | The transaction to unarchive a model.                                   |
+| `Tc`           | `LocalTransaction`      | %% TODO: this has something to do with Undo & REdo %%                   |
+
+### Queueing transactions
+
+`TransactionQueue` is also responsible for managing transactions and sending them to the server. `TransactionQueue` uses four arrays to manage transactions:
+
+78. `createdTransactions`: When a transaction is queued, it firstly goes to `createdTransactions`. A `commitCreatedTransactions` scheduler periodically moves all transactions in this array to the end of `queuedTransactions`.
+79. `queuedTransactions`: These transactions are waiting to be executed. Transactions will be saved into `__transactions` local database when are are move to `queuedTransactions`. If there the client disconnects from the Internet, or the application get closed before the transactions in `queuedTransactions` are send, the client can load these transactions from `__transactions` store and retry the next time the client reconnect to the Internet.
+80. `executingTransactions`: These transactions have been sent to the server but have not been accepted (nor rejected) yet. 
+81. `persistedTransactionsEnqueue`. When the database bootstraps, transactions saved in `__transactions` would be loaded into this array. After remote updates have been processed, they are moved to `queueTransactions` and waiting to be executed.
+
+There are another special array `completedButUnsyncedTransactions`. I will explain how it works when we talking about rebasing transactions.
+
+### Executing transactions
+
+> [!NOTE] Code References
+> - `uce.dequeueNextTransactions`: `TransactionQueue.dequeueNextTransactions`
+> - `zu.graphQLMutation`
+> - `as.updateMutation`:
+> - `uce.executeTransactionBatch`:
+> - `dce.execute`:
+> - `M3.transactionCompleted`
+
+Before sending a batch of transactions to the server, they should be converted into GraphQL mutating queries. Each transaction object has a `graphQLMutation` function to generate these queries, and bind it to the `graphQLMutationPrepared` property of that transaction. For example, updating the assignee of an issue would generate a query like this:
+
+```json
+{
+  "mutationText": "issueUpdate(id: \"a3dad63b-8302-4f1f-a874-a80e6d9ed418\", input: $issueUpdateInput) { lastSyncId }",
+  "variables": {
+    "issueUpdateInput": {
+      "assigneeId": "4e8622c7-0a24-412d-bf38-156e073ab384"
+    }
+  },
+  "variableTypes": {
+    "issueUpdateInput": "IssueUpdateInput"
+  }
+}
+```
+
+Prepared transactions will later be executed in a batch by `executeTransactionBatch`. LSE will create a `TransactionExecutor` to execute these transactions. Queries are then used in `TransactionExecutor.execute` to create a GraphQL request:
+
+```json
+{
+  "query": "mutation IssueUpdate($issueUpdateInput: IssueUpdateInput!) { 
+    issueUpdate(id: \"a3dad63b-8302-4f1f-a874-a80e6d9ed418\", input: $issueUpdateInput) { lastSyncId } 
+  }",
+  "variables": {
+    "issueUpdateInput": {
+      "assigneeId": "4e8622c7-0a24-412d-bf38-156e073ab384"
+    }
+  },
+  "operationName": "IssueUpdate"
+}
+
+```
+
+And the response will contains a `lasySyncId`.
+
+```json
+{
+  "data": {
+    "issueUpdate": {
+      "lastSyncId": 3273967562
+    }
+  }
+}
+```
+
+In addition to including the `lastSyncId` in the response body when executing a transaction, the delta packets generated by the server for this transaction will also carry the same `lastSyncId`. When the delta packets are broadcasted to a client, the client can use the `lastSyncId` to determine whether its data is consistent with the server's data. If the client's `lastSyncId` is less than the `lastSyncId` received from the server, it indicates that the client has missed some incremental updates.
+
+So, when the transactions are succesfully executed, if the `lastSyncId` is larger than the client's `lastSyncId`, this transaction will be moved to `completedButUnsyncedTransactions`. As we will discuss in the next section, it is essential for perform rebasing.
+
+### Complete transactions
+
+%% TODO:  介绍一下在请求返回之后会咋样 %%
+
+### Takeaway of Chapter 3
+
+This post is already very long so I am not going to investigate more on other types of transactions. Let's sum up this chapter!
+
+**Firstly, client-side operations will never directly modify the tables in the local database!** Instead, they only alter in-memory models. The changes are then sent as transactions to the server for submission. Only after receiving the corresponding delta packages from the server does the local database get updated. A simple way to verify this is: if you make any changes offline and then reload the page, those changes will not appear on the webpage. **Linear does not apply these transactions locally because they are designed to be executed only on the backend.** In other words, the frontend and backend use distinct methods for updating data. Unlike Operational Transformation (OT), both the client and server perform operations to update data. Given that the backend also needs to execute additional server-side business logic, this approach is quite reasonable.
+
+Secondly, unlike OT, which only sends an acknowledgment signal to the mutator, **LSE (Last-Server-Executed) sends all modified model properties to all connected clients, even if the client making the modification is not the mutator.** This simplifies the management of WebSocket connections.
+
+Lastly, LSE employs a simple **Last-Writer-Wins strategy to resolve conflicts** and only addresses conflicts in `InsertionTransaction` and `UpdateTransaction`.
+
+## Chapter 4: Delta Packets
+
+In this chapter, we will look into how LSE handles incremental udpates and keep the client up to date with the server.
+
+### Establish Connection
+
+> [!NOTE] Code References
+> - `ng.startSyncing`: `SyncClient.startSyncing`
+> - `ng.constructor`: `SyncClient.constructor`
+
+The last phrase of bootstrapping is connecting to the server using WebSocket for receiving incremental updates.  In the `handshakeCallback` witch will be executed after the connection is established, the client will compare `lastSyncId` in the callback's parameters with local `lastSyncId` to see if the client misses incremental changes. If so, it will fetch missing delta packets from the server and then apply them. 
+
+The parameters of the callback would be something like this:
+
+```typescript
+{
+  "userSyncGroups": {
+    "all": [
+      "89388c30-9823-4b14-8140-4e0650fbb9eb",
+      "094f76cf-b0c1-4f6c-9908-1801a6654f05",
+      "4e8622c7-0a24-412d-bf38-156e073ab384",
+      "E7E6104E-AAAA-42BC-9B8B-B91FCDD9946B",
+      "AD619ACC-AAAA-4D84-AD23-61DDCA8319A0",
+      "CDA201A7-AAAA-45C5-888B-3CE8B747D26B",
+      "B0B41C7E-AAAA-4C7D-A93D-CD9565DA4358"
+    ],
+    "optimized": [
+      "4e8622c7-0a24-412d-bf38-156e073ab384",
+      "E7E6104E-AAAA-42BC-9B8B-B91FCDD9946B",
+      "AD619ACC-AAAA-4D84-AD23-61DDCA8319A0",
+      "CDA201A7-AAAA-45C5-888B-3CE8B747D26B",
+      "B0B41C7E-AAAA-4C7D-A93D-CD9565DA4358"
+    ]
+  },
+  "lastSyncId": 3529152751,
+  "lastSequentialSyncId": 3529152751,
+  "databaseVersion": 1179
+}
+```
+
+Also, the `SyncClient` module listens the `SyncMessage` channel of the WebSocket connection which will emits delta packets, and calls `applyDelta` to handle those delta packets.
+
+### Applying Deltas
+
+> [!NOTE] Code References
+> - `ng.applyDelta`: `SyncClient.applyDelta`
+> - `ng.constructor`: `SyncClient.constructor`
+> - `oce.addSyncPacket`: `SyncActionStore.addSyncPacket` 
+> - `zu.supportedPacket`: `DependentsLoader.supportedPacket`
+> - `uce.modelUpserted`: `TransactionQueue.modelUpserted`
+
+After a client sends a GraphQL mutating query to the server, the server will execute that query and generate a group of delta packets, and then broadcast them to all connected clients (including the one who sends the transaction). 
+
+Each delta packet contain changes (described by the class `SyncAction`) happened on the server. For example, if the assignee of an `Issue` is changed, a client will receive delta packets like this:
+
+```jsx
+[
+  {
+    id: 2361610825,
+    modelName: "Issue",
+    modelId: "a8e26eed-7ad4-43c6-a505-cc6a42b98117",
+    action: "U",
+    data: {
+      id: "a8e26eed-7ad4-43c6-a505-cc6a42b98117",
+      title: "Connect to Slack",
+      number: 3,
+      teamId: "369af3b8-7d07-426f-aaad-773eccd97202",
+      stateId: "28d78a58-9fc1-4bf1-b1a3-8887bdbebca4",
+      labelIds: [],
+      priority: 3,
+      createdAt: "2024-05-29T03:08:15.383Z",
+      sortOrder: -12246.37,
+      updatedAt: "2024-07-13T06:25:40.612Z",
+      assigneeId: "e86b9ddf-819e-4e77-8323-55dd488cb17c",
+      boardOrder: 0,
+      reactionData: [],
+      subscriberIds: ["e86b9ddf-819e-4e77-8323-55dd488cb17c"],
+      prioritySortOrder: -12246.37,
+      previousIdentifiers: [],
+    },
+    __class: "SyncAction",
+  },
+  {
+    id: 2361610826,
+    modelName: "IssueHistory",
+    modelId: "ac1c69bb-a37e-4148-9a35-94413dde172d",
+    action: "I",
+    data: {
+      id: "ac1c69bb-a37e-4148-9a35-94413dde172d",
+      actorId: "e86b9ddf-819e-4e77-8323-55dd488cb17c",
+      issueId: "a8e26eed-7ad4-43c6-a505-cc6a42b98117",
+      createdAt: "2024-07-13T06:25:40.581Z",
+      updatedAt: "2024-07-13T06:25:40.581Z",
+      toAssigneeId: "e86b9ddf-819e-4e77-8323-55dd488cb17c",
+    },
+    __class: "SyncAction",
+  },
+  {
+    id: 2361610854,
+    modelName: "Activity",
+    modelId: "1321dc17-cceb-4708-8485-2406d7efdfc5",
+    action: "I",
+    data: {
+      id: "1321dc17-cceb-4708-8485-2406d7efdfc5",
+      events: [
+        {
+          type: "issue_updated",
+          issueId: "a8e26eed-7ad4-43c6-a505-cc6a42b98117",
+          issueTitle: "Connect to Slack",
+          changedColumns: ["subscriberIds", "assigneeId"],
+        },
+      ],
+      userId: "e86b9ddf-819e-4e77-8323-55dd488cb17c",
+      issueId: "a8e26eed-7ad4-43c6-a505-cc6a42b98117",
+      createdAt: "2024-07-13T06:25:41.924Z",
+      updatedAt: "2024-07-13T06:25:41.924Z",
+    },
+    __class: "SyncAction",
+  },
+];
+```
+
+You can see clearly in the example above that each action has an integer `id` field, which, is the `lastSyncId` associated with this sync action. And the `id` of the third sync action is 28 larger than the `id` of the second sync action which, again, indicates that the `lastSyncId` is not by workspace but the whole database.
+
+Actions have `action` type. All possible types are:
+
+82. `I` for insertion
+83. `U` for updating
+84. `A` for archive
+85. `D` for deletion
+86. `C` for covering
+87. `G` for changing sync groups
+88. `S` for changing sync groups, (it is a pity that I haven't figure out its differences with `G`)
+89. `V` for unarchive
+
+`ng.applyDelta` is responsible for handling these sync actions. It does the following things (refer to the source for implementation details):
+
+90. **Figure out if the user is added to or removed from sync groups**. If the user is added to a sync group, LSE will send a network request (indeed a partial bootstrapping) for models of that sync group. LSE will wait for the response before continue processing the sync actions.
+91. Load dependents of these actions. 
+
+---
+
+%% TODO: 实地看一下 transient 里面存储的都是什么东西 %%
+
+---
+
+92. Write data of the new sync groups and dependents into the local database.
+93. Loop through all sync actions and resolve them to update the local database.
+
+In this step, LSE will call `TransactionQueue.modelUpserted` to remove local `CreationTransaction`s that are not valid after the sync actions. If the `CreationTransaction`'s UUID is same with the model's ID, the transaction should be cancelled. Its intention is obviously avoid UUID confliction since the UUID is generated on the client side. Also, if user leaves a sync group, models of that sync group will be removed as well.
+
+94. Loop all sync actions again to change in-memory data.
+
+---
+
+In fact, in this step, LSE loops sync actions twice. 
+
+The first loop will prepare models to perform the sync actions. 
+95. For actions whose types are "I" "V" or "U", LSE creates corresponding model instances.
+96. For actions whose types are "A", LSE updates the models' properties.
+
+And then LSE will attach references for newly created models. But before that, LSE will first check if the newly created model are deleted by sync action in the same delta packet to avoid performing unnecessary works. It achieves that by comparing the `syncId`s of the action creating the model and the action deleting this model. If deleting action's `syncId` is larger, the model shall not be created.
+
+The second loop will handle sync actions one by one.
+
+For actions of type "I", "V", "U" and "C", LSE will **rebase** `UpdateTransactions` onto them.
+
+> [!NOTE] Code References
+> - `ng.applyDelta`: `SyncClient.applyDelta`
+> - `uce.rebaseTransactions`: `SyncActionStore.addSyncPacket`
+> - `zu.rebase`: `UpdateTransaction.rebase`
+
+When applying a sync action, conflicts can arise with local transactions. For example, imagine your colleague changes the assignee to Alice, while you simultaneously change the assignee to Bob. The server processes your colleague’s update first, so according to the "last-writer-wins" principle, the assignee on the server ends up as Bob.
+
+Here’s what happens on your client: you create an `UpdateTransaction` to change the assignee, but before this transaction is executed by the server, your client receives a delta packet, updating the assignee to Alice. At this point, LSE needs to perform a rebasing, because, following the "last-writer-wins" principle, the in-memory model needs to be reverted back to Bob.
+
+This rebasing occurs in the `rebaseTransactions` method, where all `UpdateTransaction` objects in the queue call the `rebase` method. The `original` value of each transaction is updated to reflect the value from the delta packet (in this case, Alice), and the in-memory model is reset to Bob. Fairly speaking, it is very similar to OT!
+
+---
+
+97. Update `lastSyncId` of the client, update `firstSyncId` if sync groups change.
+98. Completed transactions waiting for this `lastSyncId`.
+
+```typescript
+this.syncWaitQueue.progressQueue(this.lastSyncId), // If some transactions are waiting for a lastSyncId to complete, complete them.
+```
+
+#### Server-side business logic
+
+If we take a closer look at the `UpdateTransaction` and the corresponding delta packets, it’s clear that the delta packets carry more data than the transaction itself—specifically, an `IssueHistory` of the assignee change. Unlike OT, where the server mainly handles operation transformations, validates permissions, and executes operations to maintain a single source of truth, LSE’s backend involves a lot of business logic in addition to these tasks.
+
+### How to Know If The Client is Missing Delta Packets?
+
+That is an important question! And should the delta packet's of the same sync groups should be applied in a sequence?
+
+### Takeaway of Chapter 4
+
+
+
+## Chapter 5: Misc
+
+### Undo & Redo
+
+> [!NOTE]
+> Please refer to the following functions:
+>
+> - `zu.undoTransaction`: `UpdateTransaction.undoTransaction`
+> - `jce.addOperation`: `UndoQueue.addOperation`
+> - `jce.undo`: `UndoQueue.undo`
+
+Undos and redos in LSE are based on transactions. Each transaction type includes a specific `undoTransaction` method, which executes the undo logic and returns another transaction for redo purposes. For example, the `undoTransaction` method of an `UpdateTransaction` reverts the model's property to its previous value and returns another `UpdateTransaction` to the `UndoQueue`. It’s important to note that when a transaction executes its undo logic, a new transaction is created and added to the `queuedTransactions` to ensure proper synchronization.
+
+But how does the `UndoManager` determine which transactions should be appended to the undo/redo stack? The answer lies in Linear’s UI logic, which is responsible for identifying differences.
+
+```jsx
+n.title !== d &&
+  o.undoQueue.addOperation(
+    s.jsxs(s.Fragment, {
+      children: [
+        "update title of issue ",
+        s.jsx(Le, {
+          model: n,
+        }),
+      ],
+    }),
+    () => {
+      (n.title = d), n.save();
+    }
+  );
+```
+
+When an edit is made, the UI calls `UndoQueue.addOperation`, which allows the `UndoQueue` to subscribe to the next `transactionQueuedSignal` and create an undo item. This signal is emitted when transactions are added to `queuedTransactions`. The subscription ends when the callback finishes execution, at which point `save()` is called, and any transactions created in `save()` are pushed to the undo/redo stack. However, when an undo operation is performed, although the signal is triggered, no additional undo item is created because `UndoQueue` is not actively listening during that time.
+
+When performing undo, `undoTransaction` will return a correpsoding transaction for redo purposes.
+
+This raises an interesting question: while a transaction can perform "undo" and "redo" transactions on the client, **could Linear redo transactions cached in the local database when the application starts in order to provide a better offline experience?**
+
+### Permissions
+
+
+
+## Conclusion
+
+%% TODO 为什么在这里提到了 SyncActionStore? %%
+
+_Here it becomes clear that SyncActionStore plays an important of role of syncing models!_ As
+
+SyncActionStore 实际上存储了所有被删除以及 removal 的数据的记录。
+
+
+No pagination? 
+
+Other types of transactions.
+TransientRemoval
+
+## Appendix A: Minimized and Possible Original Names Lookup
+
+| Minimized names                                                                                                                                         | Possible original names                                                     | Description                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Me` `rr`                                                                                                                                               | `ModelRegistry`                                                             |                                                                                                                                                                                |
+| `w`                                                                                                                                                     | `ApplicationStore`                                                          |                                                                                                                                                                                |
+| `Ln`                                                                                                                                                    | `makeObservable`                                                            | `MobX` API to make an object observable.                                                                                                                                       |
+| `sg` `hf` `km`                                                                                                                                          | `SyncedStore`                                                               | It is the `store` in models. It provides lots of methods to get or manipulate models.                                                                                          |
+| `Hr`                                                                                                                                                    | `SyncedClient`                                                              |                                                                                                                                                                                |
+| `Dt`                                                                                                                                                    | `Database`                                                                  |                                                                                                                                                                                |
+| `jn`                                                                                                                                                    | `DatabaseManager`                                                           |                                                                                                                                                                                |
+| `cce`                                                                                                                                                   | `StoreManager`                                                              | The in-memory store manager. It manages lots of object stores. Each store maps to a model, and maps to a table in the database.                                                |
+| `TE`                                                                                                                                                    | `FullStore`                                                                 | A store which content should be loaded all-at-once.                                                                                                                            |
+| `Jm` `p3`                                                                                                                                               | `PartialStore`                                                              | A store which content can be partially loaded. It extends `FullStore` .                                                                                                        |
+| `uce`                                                                                                                                                   | `TransactionQueue`                                                          |                                                                                                                                                                                |
+| `A8` `sd`                                                                                                                                               | `GraphQLClient`                                                             | A GraphQL client. It would be used by many classes.                                                                                                                            |
+| `w`                                                                                                                                                     | `Property`                                                                  | This refers to a self-owned property of a model. For example, `title` is a property of `Issue`.                                                                                |
+| `_g`                                                                                                                                                    | `EphemeralProperty`                                                         | This is also a self-owned property of a model but is not stored in the database. For example, `lastUserInteraction` is an ephemeral property of `User`.                        |
+|                                                                                                                                                         |                                                                             | For example, `documentContentId` of `Issue` refers to the document model's ID of the issue's description.                                                                      |
+| `pe`                                                                                                                                                    | `Reference`                                                                 |                                                                                                                                                                                |
+| `xe` `Nt`                                                                                                                                               | `ReferenceCollection` `LazyReferenceCollection`                             | This is used for 1 to many relationships. For example, `issues` is a lazy reference collection of `IssueLabel`. And `notifications` is a reference collection of `Initiative`. |
+| `pe` `hr` `Ue` `g5` `dt` `kl`                                                                                                                           | `WithBackReference` `LazyWithBackReference` `Reference` `LazyBackReference` | These 6 decorators are used to declare reference and back references with different options.                                                                                   |
+| `ReferenceArray`                                                                                                                                        | `ii`                                                                        |                                                                                                                                                                                |
+| Many to many relationships. For example, `labels` are reference array of `Issue`. (But `issues` are lazy reference collection of `Label`).              |                                                                             |                                                                                                                                                                                |
+| `as`                                                                                                                                                    | `Model`                                                                     |                                                                                                                                                                                |
+| The base class that each model will inherit. The class declares a `store` and `__mobx` . The are the critical parts of data fetching and observability. |                                                                             |                                                                                                                                                                                |
+| The class provides lots of static methods to register models, properties and their metadata.                                                            |                                                                             |                                                                                                                                                                                |
+| `Qc`                                                                                                                                                    | `UUID`                                                                      | A helper function to generate UUID.                                                                                                                                            |
+## Appendix B: Actions and Computed Values
+
+Actions (`rt`) & Computed (`O`)
+
+Let's take `moveToTeam` and `parents` of `Issue` for example, there is `Action` decorator and `Computed` decorator.
+
+```jsx
+Pe([rt], re.prototype, "moveToTeam", null);
+Pe([O], re.prototype, "parents", null);
+
+// The source code would be something like:
+@ClientModel("Issue")
+class Issue {
+  @Action
+  moveToTeam() {
+    // implementation
+  }
+
+  @Computed
+  get parents() {
+    // implementation
+  }
+}
+```
+
+**Action** and **computed** are core MobX primitives. During bootstrapping, these properties are made observable by directly calling MobX's `makeObservable` API.
+
+## Appendix C: What's not covered in this post?
