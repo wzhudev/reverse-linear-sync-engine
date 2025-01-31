@@ -7093,7 +7093,7 @@ const rr = class rr {
         this.modelCascadeHydrationKeys[e] = this.modelCascadeHydrationKeys[n.name],
         delete this.modelCascadeHydrationKeys[n.name]),
         
-        this.modelPropertyHashLookup[e] = r, // Map model's name to the hash.
+        this.modelPropertyHashLookup[e] = r, // Map model properties' hash to the model's name.
         rr._schemaHash = $1(rr._schemaHash + r) // The model's hash is added to the schema hash.
     }
     static registerProperty(e, n, r) {
@@ -7523,7 +7523,7 @@ class E1 { // base class of ReferenceCollection
             })
         }
     }
-    hydrateElements() {
+    hydrateElements() { // ReferenceCollection's hydrate method
         const e = this.elements.map(n=>n.id).join(",");
         return this.hydrationElementsPromise && this.hydrationElementsPromiseHash !== e && (this.hydrationElementsPromiseHash = void 0,
         this.hydrationElementsPromise = void 0),
@@ -7910,32 +7910,36 @@ function Tx(t) {
 const Ku = class Ku { // PartialIndexHelper
     static createPartialIndexValue(e, n) {
         return typeof e == "string" 
-            ? e.split(".").at(-1) === "teamId" 
+            ? e.split(".").at(-1) === "teamId" //  Speicially, if the referencing model is Team, just use the Team's ID as partial index
                 ? n 
-                : `${e}-${n}` // userId-<hash>
+                : `${e}-${n}` // e.g. issueId-<hash>
             : "id"in e 
                 ? e.id 
-                // TODO: what are indexedKey and syncGroup used for?
                 : "indexedKey"in e 
                     ? this.createPartialIndexValue(e.indexedKey, e.keyValue.toString()) 
                     : "syncGroup"in e // SyncGroup is a Team or a User
                         ? this.createPartialIndexValue("teamId", e.syncGroup) 
                         : this.FULLY_LOADED_INDEX_NAME
     }
-    static resolveCoveringPartialIndexValues(e, n, r) { // e for Model class, n for partial index key, r for parent model
+    static resolveCoveringPartialIndexValues(e, n, r) { 
+        // e for Model class, e.g. Comment
+        // n for partial index key, e.g `issueId`
+        // r for parent model instance, in another word, model instance that references `e`, e.g. An issue instance
         // For example, e == class Comment, n == "issueId", r == Issue instance
         const s = this.partialIndexInfoForModel(e.modelName).map(a=>a.path)
-          , i = [this.createPartialIndexValue(n, r.id)]; // ["issueId-xxxxx"]
+          , i = [this.createPartialIndexValue(n, r.id)]; // ["issueId-xxxxx"]. Direct reference.
+        // Indirect references below.
         for (const a of s) {
             const o = a.split(".");
-            if (o.length === 1)
-                continue; // Already included in i.
+            if (o.length === 1) // e.g. issueId
+                continue; // Already included in this.createPartialIndexValue.
             let l = r;
             const d = o.shift();
             if (!(d !== n && d !== n.replace(/Id(s?)$/, "")))
                 for (const u of o) {
                     const h = l[u];
                     if (h instanceof at)
+                        // For deeply nested references.
                         l = h;
                     else if (typeof h == "string") {
                         // Create partial index value for the reference property. For example, team.
@@ -7946,6 +7950,7 @@ const Ku = class Ku { // PartialIndexHelper
                             typeof f == "string" && i.push(this.createPartialIndexValue(a, f));
                         break
                     } else
+                        // If the referencing model deos not exist, we will not create partial index value.
                         break
                 }
         }
@@ -7960,7 +7965,9 @@ const Ku = class Ku { // PartialIndexHelper
                 this.transientPartialIndexedKeys[e] = [];
             else {
                 const i = Me.dependenciesOfModel(e).filter(a=>a.model.isPartiallyLoaded);
-                i.length === 0 ? this.transientPartialIndexedKeys[e] = [] : this.transientPartialIndexedKeys[e] = i.flatMap(a=>r.map(o=>({
+                // What is flat map here?
+                i.length === 0 ? this.transientPartialIndexedKeys[e] = [] : this.transientPartialIndexedKeys[e] = i.flatMap(
+                    a => r.map(o=>({
                     dependency: a,
                     indexedKey: o
                 })))
@@ -7978,7 +7985,7 @@ const Ku = class Ku { // PartialIndexHelper
             this.modelPartialIndexPathsLookup[e]
     }
     static processPartialIndexInfoForModel(e, n=new Set, r=0) {
-        // E for modelName, n for 
+        // e for the model's ModelName
         const s = Me.getModelClass(e);
         if (!s || !s.isPartiallyLoaded) // Only models whose load strategy is partial are considered.
             return [];
@@ -7986,11 +7993,12 @@ const Ku = class Ku { // PartialIndexHelper
           , a = [];
         for (const o of Object.keys(i)) {
             const l = i[o];
-            // Search reference properties with referencedProperty.
+            // Search reference properties
             if ((l.type === vn.reference || l.type === vn.referenceArray) && l.referencedProperty && l.referencedClassResolver) {
                 const d = l.referencedClassResolver();
-                if (!d.usedForPartialIndexes || d.modelName === e) // 1. The referenced model is not used for partial indexes. 
-                // 2. The referenced model is the same as the current model.
+                if (!d.usedForPartialIndexes || d.modelName === e) 
+                    // 1. The referenced model is not used for partial indexes. 
+                    // 2. The referenced model is the same as the current model.
                     continue;
                 if (a.push({
                     path: o,
@@ -8071,7 +8079,7 @@ class Et extends te {
     async isLocallyAvailable() {
         return this.isHydrated() ? !0 : at.store.syncClient.hasModelsForPartialIndexValues(this.modelClass.modelName, this.getCoveringPartialIndexValues())
     }
-    hydrate(e) { // Hydrate a LazyReferenceCollection
+    hydrate(e) { // LazyReferenceCollection's hydrate method
         var s, i, a, o;
         if (this.hydrationPromise && (!this.isHydrationPromiseLocalOnly || e != null && e.onlyIfLocallyAvailable))
             return this.hydrationPromise;
@@ -8090,7 +8098,7 @@ class Et extends te {
             var u;
             try {
                 if (this.index && this.parent) { // E.g. index === "assigneeId" and parent === User object
-                    const h = this.getCoveringPartialIndexValues() // Let's figure out what is partial index.
+                    const h = this.getCoveringPartialIndexValues() // Get partial index first.
                       , f = await at.store.hydrateModels(this.modelClass, { // Hydrate Issue model.
                         key: this.index, // Issue model reference the parent model by `assigneeId`.
                         value: this.parent.id, // The current user's ID.
@@ -8401,9 +8409,9 @@ class ky {
     }
 }
 
-// #region BaseModel
+// #region Model
 
-const as = class as { // basic data model class
+const as = class as { // Model class
     static get constructorName() {
         return this.modelName
     }
@@ -8494,13 +8502,12 @@ const as = class as { // basic data model class
     get isSingletonModel() {
         return !1
     }
-    // PART III: transaction
-    save(e=!1, n) { // the `save` method on every model to trigger syncing
-        return lt(()=>{ // `lt` is actually mobx's util function `runInAction`. It kicks MobX awaik to do its job.
+    save(e=!1, n) { // Save a model to generate a transaction.
+        return lt(()=>{ // `lt` is actually mobx's util function `runInAction`. It kicks MobX to do its job.
             var s;
-            const r = this.store.save(this, e, n);
+            const r = this.store.save(this, e, n); // Call `save` of `SyncedStore`. ->
             return this.isInTransaction() || (this._clonedFromModel = void 0),
-            (s = this._onSave) == null || s.fire(),
+            (s = this._onSave) == null || s.fire(), // `fire` will notify its observers it has changed.
             r
         }
         )
@@ -8899,7 +8906,7 @@ const as = class as { // basic data model class
     isInstanceOf(e) {
         return this instanceof e
     }
-    propertyChanged(e, n, r) { // `e` for changed property, `n` for new value, `r` for old value
+    propertyChanged(e, n, r) { // `e` for changed property, `r` for new value, `n` for old value
         const s = this.properties[e];
         if (s) {
             if (s.type === vn.ephemeralProperty) {
@@ -32408,20 +32415,21 @@ const Bc = {
   , kb = "linear_databases"
   // #region DatabaseManager
   , jn = class jn { // DatabaseManager
-    static async databaseInfo(e) {
-        const {userId: n, modelSchemaHash: r, minVersion: s} = e;
+    static async databaseInfo(e) { // Get databaseInfo of the current workspace.
+        const {userId: n, modelSchemaHash: r, minVersion: s} = e; // modelSchemaHash is from ModelRegistry
+        // Search: modelSchemaHash: Me.schemaHash
         let i = s;
-        // Create `linear_databases` calling `jn.databases`
+        // `linear_databases` will be created by calling `jn.databases`.
         const o = (await jn.databases()).filter(p=>p.userId === n && p.version > i).orderBy(["version"], ["desc"]);
         o.length > 0 && (i = o[0].version);
-        // the following code calculates the schemaHash of the database.
+        // The following code calculates the schemaHash of the workspace's database.
         const l = await this.userVersion(n)
-          , d = "linear_" + $1(`${n}_fake_token__${i}${l ? `_${l}` : ""}`)
+          , d = "linear_" + $1(`${n}_fake_token__${i}${l ? `_${l}` : ""}`) // Name of the database is determined by user identity.
           , u = $1(`
       ${r}_${Bc.indexVersion}_${Bc.partialObjectStoreSchemaVersion}_${Bc.syncActionStoreVersion}`)
-          , h = (await this.databases()).find(p=>p.name === d); // read if there is a database with the same name from indexDB
+          , h = (await this.databases()).find(p=>p.name === d); // Check if there is a database with the same name from IndexedDB.
         let f = h && Number(h == null ? void 0 : h.schemaVersion) || 1; // schemaVersion starts with 1
-        return h && h.schemaHash !== u && f++, // if the schema mismatches, we increment the schemaVersion, and use it to trigger a migration of indexDB
+        return h && h.schemaHash !== u && f++, // If the schema mismatches, we increment the schemaVersion, and use it to trigger a migration.
         {
             name: d,
             createdAt: Date.now(),
@@ -32519,7 +32527,7 @@ const Bc = {
             version: n
         })
     }
-    static async database() {
+    static async database() { // This method creates `linear_databases` table and return a connection to it.
         return jn.databaseInstance || (jn.databaseInstance = await E4.executeWithRetries({
             maxRetries: 2,
             backoff: 0,
@@ -32579,12 +32587,12 @@ if (t2 && t2.models)
     for (const t in t2.models)
         Bc.models[t] = t2.models[t];
 
-// #region Decorators
+// #region decorators
 
 /**
  * Action decorator
  */
-function rt(t, e) {
+function rt(t, e) { 
     Me.registerAction(t.constructor.name, e)
 }
 /**
@@ -32674,6 +32682,7 @@ function pe(t, e, n) {
 
 /**
  * LazyReference decorator
+ * 
  * \@ManyToOne
  */
 function Hr(t, e, n) {
@@ -32683,7 +32692,7 @@ function Hr(t, e, n) {
 }
 
 /**
- * Reference with no back references decorator
+ * Reference decorator, with no back references 
  */
 function Ue(t, e) {
     return (n,r)=>{
@@ -32716,7 +32725,9 @@ function Dt(t, e, n) {
 }
 
 /**
- * LazyReferenceOrBack decorator
+ * Lazy Reference decorator
+ * 
+ * \@OneToOne?
  */
 function kl(t, e, n) {
     // t is config or the back reference target model
@@ -32786,22 +32797,23 @@ function ii(t, e, n) {
 }
 
 /**
- * Model decorator
+ * ClientModel decorator
  */
-function We(t) { // t is the name of that model
-    return e=>{ // e if the constructor of that model
-        M1(e.prototype, "createdAt", !1), // All model would have these 3 default fields. There are made responsive.
+function We(t) { // t is the name of the model
+    return e=>{ // e if the constructor function of the model
+        M1(e.prototype, "createdAt", !1), // Each model has these 3 default fields. There are responsive.
         M1(e.prototype, "updatedAt", !1),
         M1(e.prototype, "archivedAt", !1),
-        e.prototype.modelName = t; // Name is bound to the prototype.
+        e.prototype.modelName = t; // Name is bound to the prototype object.
         let n = `${t}_43_${Bc.models[t]}`; // Schema version is added to hash, e.g. "Issue_43_3".
-        if (Me.getModelClass(t)) // If the model has been registered before.
-            return;
+        if (Me.getModelClass(t))
+            return;  // The model has been registered before.
         e.loadStrategy === dn.partial && (n += "_partial"); // "Issue_43_3_partial"
-        const r = Me.propertiesOfModel(e.name); // Because of how tsc compiles, members of a class are registered before the the class.
+        const r = Me.propertiesOfModel(e.name); // Because of how tsc compiles, properties decorators will execute before model's decorators.
+        // Se here we can get call properties of that model.
         for (const s of Object.keys(r)) {
-            const i = eY[`${t}_${Bc.models[t] || 0}_${s}`] ? "1" : "0"; // Seems some properties are special.
-            n += "_" + s + "_" + i // Schema hash also include all its properties, "Issue_43_3_partial_propertyName_1_propertyName_0..." like this
+            const i = eY[`${t}_${Bc.models[t] || 0}_${s}`] ? "1" : "0"; // Seems that some properties are special.
+            n += "_" + s + "_" + i // Schema hash also include all its properties, e.g. "Issue_43_3_partial_propertyName_1_propertyName_0...".
         }
         n = $1(n), // The model's hash generated.
         Me.registerModel(t, e, n) // Register the model's name, constructor and its hash to ModelRegistry.
@@ -32809,6 +32821,7 @@ function We(t) { // t is the name of that model
 }
 
 /**
+ * registerReference function
  * The helper function to register Reference or BackReference.
  */
 function A4(t, e, n, r, s) {
@@ -32820,14 +32833,15 @@ function A4(t, e, n, r, s) {
     const i = e + "Id" // such as `assigneeId` of `Issue`
       , a = n.nullable
       , o = n.nullable ? !0 : n.optional;
+    // Define property of type ReferenceModel, e.g. `assignee` of `Issue`
     Object.defineProperty(t, e, {
         get: function() {
-            const u = this[i];
+            const u = this[i]; // e.g. this['assigneeId']
             if (u)
-                return this.store.findById(at, u) // Find the referenced model for the store with given id.
+                return this.store.findById(at, u) // Find the referenced model for the store with given ID.
         },
         set: function(u) {
-            // Set `assigneeId` instead, for example.
+            // Set `assigneeId` instead.
             this[i] = u ? typeof u == "string" ? u : u.id : void 0
         },
         enumerable: !0,
@@ -32841,7 +32855,8 @@ function A4(t, e, n, r, s) {
     };
     s && (l.referencedClassResolver = s),
     Me.registerProperty(t.constructor.name, e, l), // Register `assignee` metadata.
-    M1(t, i, !1); // make the id property observable
+    // Define property of type Reference, e.g. `assigneeId` of `Issue`.
+    M1(t, i, !1); // And also make the property observable.
     const d = {
         type: s ? vn.reference : vn.backReference, // If we pass `s` then its a Reference.
         referenceOptional: o,
@@ -32856,7 +32871,9 @@ function A4(t, e, n, r, s) {
     n != null && n.onArchive && (d.onArchive = n.onArchive),
     Me.registerProperty(t.constructor.name, i, d) // Register `assigneeId` metadata.
 }
+
 /**
+ * Register lazy reference
  * The helper function to register lazy Reference and BackReference.
  */
 function j4(t, e, n, r, s) { 
@@ -32926,7 +32943,7 @@ function j4(t, e, n, r, s) {
  * The helper function to make a property observable. And it also plays
  * an important role when properties of a model get updated.
  */
-function M1(t, e, n, r) {
+function M1(t, e, n, r) { // function observability helper
     // `t` for the model's prorotype object.
     // `e` for the property's name. 
     // `n` for deep observation. 
@@ -32958,10 +32975,10 @@ function M1(t, e, n, r) {
                 this.__mobx[s] = ut.box(o, {
                     deep: n
                 }), 
-                // This method is called to bookeepping what property has been changed, what is the old value and what
+                // This method is called to bookkeepping what property has been changed, what is the old value and what
                 // is the new value. This is critical to construct an UpdateTransaction.
                 this.propertyChanged(e, this.__mobx[i], o),
-                delete this.__mobx[i];  // remain the plain value
+                delete this.__mobx[i]; 
             else {
                 const l = this.__mobx[s].get();
                 this.__mobx[s].set(o),
@@ -33079,7 +33096,7 @@ function ai(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-const Nm = class Nm extends si {
+const Nm = class Nm extends si { // WorkflowState
     get isTriage() {
         return this.type === ye.triage
     }
@@ -42860,7 +42877,7 @@ function Lr(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-const Bm = class Bm extends It {
+const Bm = class Bm extends It { // ProjectMilestone
     get issuesWithoutClones() {
         return this.issues.filter(e=>!e.isClone)
     }
@@ -62002,7 +62019,7 @@ function Re(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-const I3 = class I3 extends Xc {
+const I3 = class I3 extends Xc { // Project
     get dependedOnByRelations() {
         return this.relations.hydratedElements.filter(e=>e.description === cr.blocking)
     }
@@ -63414,7 +63431,7 @@ function je(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-const Gm = class Gm extends It {
+const Gm = class Gm extends It { // Gm is "Team"
     get teamEmailIntakeAddresses() {
         return this.emailIntakeAddresses.filter(e=>!e.template)
     }
@@ -63850,7 +63867,7 @@ function $t(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-const Km = class Km extends at {
+const Km = class Km extends at { // Cycle
     getFavorite() {
         return this.favorite ?? this.store.user.favorites.find(e=>e.predefinedViewTeam === this.team && this.favoriteViewType === e.predefinedViewType)
     }
@@ -76214,7 +76231,7 @@ function Pe(t, e, n, r) {
     i
 }
 // Model definition: issues
-const Vs = class Vs extends Xc {
+const Vs = class Vs extends Xc { // Issue
     static teamKeyFromIdentifier(e) {
         return e.split("-")[0].toUpperCase()
     }
@@ -79268,6 +79285,9 @@ const Xm = class Xm { // Bootstrap Helper
         f
     }
     static async partialBootstrap(e, n, r, s) {
+        // n for models to load
+        // r for syncGroups
+        // s for options { firstSyncId: number; forceNoCache: boolean }
         Hi.addStartupSpanTag("partialBootstrap", !0),
         F.network("Partial bootstrap", {
             modelsToLoad: n,
@@ -79276,9 +79296,9 @@ const Xm = class Xm { // Bootstrap Helper
         let i = `/sync/bootstrap?type=partial&onlyModels=${n.join(",")}`;
         r && (i += `&syncGroups=${r.join(",")}`),
         (s == null ? void 0 : s.forceNoCache) === !0 && (i += "&noCache=true"),
-        s != null && s.firstSyncId && (i += `&firstSyncId=${s.firstSyncId}`); // Which basically means: please give me models since action
+        s != null && s.firstSyncId && (i += `&firstSyncId=${s.firstSyncId}`);
         const a = await e.restModelsJsonStream(i) // Partial bootstrapp is very similar to fullBootstrap
-        // except LSE will add parameters syncGroups and lastSyncId
+        // except that LSE will add parameters syncGroups and lastSyncId
           , o = a.metadata
           , l = a.syncActions || []
           , d = mm.applyDeltaSyncOnModelObjectCollection(a.models, l.reverse())
@@ -79418,6 +79438,8 @@ class TE {
         return this.cachedData ? this.cachedData.find(i=>i.id === s) : e.get(this.storeName, s) // Get the model for cachedData or IndexedDB.
     }
     async getAllForIndexedKey(e, n, r) {
+        // Comparing with `getAllForIndexexKey` for `PartialStore`, since the corresponding model will not be 
+        // lazily loaded, it can just look into all models it has stored, no need to do a network hydarytion.
         return this.cachedData
             // For example, if there are cached data, LSE will try to get call comments whose issueId matches n.value (which is the Issue's id).
             ? this.cachedData.filter(s=>s[n.key] === n.value) 
@@ -79463,7 +79485,9 @@ class TE {
     }
     async checkIsReady(e) { // e for IDBTransaction
         const [n,r] = await Promise.all([e.objectStore(dr).get(this.modelName), e.objectStore(this.storeName).count()]);
-        // Since partial store is not required, they will be set to ready.
+        // In _meta table, it should be recorded as "persisted"
+        // If the model's loadingStrategy is required, there should be records in the table.
+        // Otherwise, we recognize the model as ready.
         n && typeof n == "object" && n.persisted && (!this.options.required || r > 0) ? this.ready = !0 : this.ready = !1
     }
     async setIsReady(e) {
@@ -79551,7 +79575,7 @@ class TE {
     }
 }
 /** PartialStore */
-const Jm = class Jm extends TE { // PartialStore
+const Jm = class Jm extends TE { // class PartialStore
     constructor(e, n) {
         super(e, n, {
             required: !1
@@ -79592,25 +79616,30 @@ const Jm = class Jm extends TE { // PartialStore
         }
         return super.getById(e, s)
     }
-    async getAllForIndexedKey(e, n, r) {
+    async getAllForIndexedKey(e, n, r) { // For partial models
         // e for Database Proxy
         // n for { key, value, coveringPartialIndexValues }
         // n for options
-        return this.isReady 
-            ? await super.getAllForIndexedKey(e, n) 
+        return this.isReady // If the store has loaded everything from server, it just performs FullStore's getAllForIndexedKey method
+        // But when will a partial store set as isReady? Continue reading the article.
+            ? await super.getAllForIndexedKey(e, n)
+            // LSE will perform network hydration if
+            // 1. There's no covering partial index, meaning LSE cannot know if it has performed
+            // a network hydration for this partial index before.
             : e && (n.coveringPartialIndexValues === void 0  
+                    // 2. Check if the partial indexed are in the parital_database, meaning
+                    // it has performed a network hydartion fo this request before, and it
+                    // should load from the local cache.
                     || await this.hasModelsForPartialIndexValues(e, n.coveringPartialIndexValues) 
+                    // 3. can skip network hydration
                     || r != null && r.canSkipNetworkHydration && await (r == null ? void 0 : r.canSkipNetworkHydration())) 
-                // LSE will perform network hydration if
-                // 1. There's no covering partial index
-                // 2. Check if the partial indexed are in the parital_database
-                // 3. can skip network hydration
-                // Otherwise it will try to read the database with the Issue's id as index.
+                // Otherwise it will try to hydrate from the local database.
                 ? await e.getAllFromIndex(this.storeName, n.key, IDBKeyRange.only(n.value)) 
                 : "needs_network_hydration"
     }
     async hasModelsForPartialIndexValues(e, n, r) {
-        if (this.isReady)
+        // n for the array of covering partial indexes.
+        if (this.isReady) // If the partial is ready, all models are loaded hence all partial indexed should be covered.
             return !0;
         if (n.length === 0) // No covering partial index.
             return !1;
@@ -79656,7 +79685,7 @@ const Jm = class Jm extends TE { // PartialStore
 Jm.schemaVersion = 1;
 let p3 = Jm;
 /** SyncActionStore */
-class oce {
+class oce { // SyncActionStore is used to store delta packets' elements.
     constructor() {
         this.storeIsEmpty = !1,
         this.storeName = $1("syncActionStore" + Bc.syncActionStoreVersion)
@@ -79725,7 +79754,7 @@ class oce {
     }
 }
 /** StoreManager */
-class cce {
+class cce { // Class StoreManager
     get onSavingStoreCountChange() {
         return this._onSavingStoreCountChange
     }
@@ -79734,22 +79763,23 @@ class cce {
     }
     constructor(e, n) {
         var s;
-        this.objectStoreLookup = {},
+        this.objectStoreLookup = {}, // A map to lookup Stores.
         this.objectStores = [],
         this._onSavingStoreCountChange = new Tt;
         const r = n.requiredModels.map(i=>Me.getClassName(i));
         // n.requiredModels are ['Team', 'TeamKey', 'User', 'UserSettings', 'WorkflowState', 'Organization'].
         for (const i of Me.getModelNames()) {
-            const o = ((s = Me.getModelClass(i)) == null ? void 0 : s.loadStrategy) === dn.partial 
-                ? new p3(i,e) // create ParitalObjectStore
-                : new TE(i,e,{ // create FullObjectStore
+            const o = ((s = Me.getModelClass(i)) == null ? void 0 : s.loadStrategy) === dn.partial
+                ? new p3(i,e) // create ParitalStore
+                : new TE(i,e,{ // create FullStore
                     required: r.includes(i)
                   });
             this.objectStoreLookup[i] = o,
             this.objectStores.push(o)
         }
-        this.syncActionStore = new oce
+        this.syncActionStore = new oce // The SyncActionStore is used to store delta actions.
     }
+    // Also this class provides methods to read write IndexedDB.
     createTransaction(e, n) {
         if (!e)
             return;
@@ -79880,21 +79910,22 @@ const eg = class eg { // class: Database
     get onSavingStoreCountChange() {
         return this.storeManager.onSavingStoreCountChange
     }
-    requiredBootstrap() { // Determine what type of boostrapping we need to perform.
+    requiredBootstrap() {
         var o;
         const e = this.metadata.lastSyncId
-          , n = Me.getModelNamesByMaxLoadStrategy(dn.lazy)
-          , r = new Set(this.storeManager.readyStores.map(l=>l.modelName))
-          , s = n.filter(l=>!r.has(l))
+          , n = Me.getModelNamesByMaxLoadStrategy(dn.lazy) // Get models whose load strategy is instant or lazy.
+          , r = new Set(this.storeManager.readyStores.map(l=>l.modelName)) // Get all ready models.
+          , s = n.filter(l=>!r.has(l)) // Check if there are models not ready.
           , i = ft.LINEAR_DEMO_ORGANIZATION_ID && ((o = this.openOptions) == null ? void 0 : o.organizationId) === ft.LINEAR_DEMO_ORGANIZATION_ID
-          , a = hs || i ? !1 : this.hasTimelyData(s.length === 0);
+          , a = hs || i ? !1 : this.hasTimelyData(s.length === 0); // Or data is too outdated.
         return r.size === 0 || !e || navigator.onLine === !0 && a === !1 ? {
             type: "full",
             untimelyLocalData: !a,
             modelsToLoad: n,
             partialModels: Me.getModelNames(dn.partial),
             lastSyncId: 0
-        } : s.length === 0 ? {
+        } : s.length === 0 ? { // If models whose load strategy is instant or lazy are ready, do
+            // a local boostrapping, otherwise a partial boostrapping.
             type: "local",
             modelsToLoad: s,
             partialModels: [],
@@ -79956,17 +79987,18 @@ const eg = class eg { // class: Database
     async open(e) {
         this.openOptions = e;
         const n = mn.getValue(mn.clientDatabaseMinVersion, 50)
-          // When calling this method, linear_databases would be created.
+        // When calling this method, linear_databases would be created.
+        // Get the database info of the current workspace's database.
           , r = await Xn.databaseInfo({
             ...e,
             minVersion: n
         });
-        Xn.registerDatabase(r), // Save the database's meta into "databases" database.
-        this.name = r.name,
+        Xn.registerDatabase(r), // Save the database's meta into "linear_databases" database.
+        this.name = r.name, // Name of database for the current workspace.
         F.network(`Using database ${this.name} schema version ${r.schemaVersion}`);
         let s = !1;
         try {
-            // Bootstrap 2. Connect to the database and see if should create or migrate the database.
+            // Connect to the database and see if should create or migrate the database.
             this.database = await p_(this.name, r.schemaVersion, { // Use schemaVersion to check if a migration is required.
                 // When the schemaVersion changes, or there's no database with name `this.name`, the upgrade callback
                 // would be called to creat the database.
@@ -80016,7 +80048,8 @@ const eg = class eg { // class: Database
         }
         // Get metadata of the database.
         this.metadata = await this.getMetadata(s),
-        await this.storeManager.checkReadinessOfStores(this.database), // On first bootstrapping, all models are not ready.
+        // On first bootstrapping, all models are not ready. So a full bootstrapping will be performed.
+        await this.storeManager.checkReadinessOfStores(this.database), 
         Xn.cleanOutdatedDatabases(e.userId, r.version, r.userVersion),
         hs || Xn.deleteOutdatedDemoDatabases()
     }
@@ -80365,7 +80398,6 @@ const eg = class eg { // class: Database
             for (const d of n.modelsToLoad)
                 l[d] || (l[d] = []);
             r = o.syncDeltaPackets;
-            // Models 
             // Each type of model will be set into ObjectStore.
             for (const d in l)
                 this.storeManager.setModelData(d, l[d] ?? []);
@@ -80374,6 +80406,7 @@ const eg = class eg { // class: Database
             this.metadata.subscribedSyncGroups = o.subscribedSyncGroups,
             n.type === "full" && (this.metadata.lastSyncId = o.lastSyncId,
             this.metadata.firstSyncId = o.lastSyncId),
+            // Metadata is also written to IndexedDB.
             (i = this.database) == null || i.put(dr, this.metadata, "meta").catch(this.handleWriteError)
         }
         return {
@@ -80436,6 +80469,7 @@ const eg = class eg { // class: Database
         new Set(r)
     }
     get storeManager() {
+        // The store manager is lazily created in this getter.
         return this._storeManager || (this._storeManager = new cce(this.graphQLClient,this.options)),
         this._storeManager
     }
@@ -80592,6 +80626,7 @@ const M3 = class M3 { // BaseTransaction
         // If there's an execution error, that means the server has rejected
         // this transaction, so LSE should undo it.
         this.reject(e)) : (await this.syncClient.waitUntilSyncId(n),
+        // The transaction will resolve when the client has reached `lastSyncId` of n.
         this.resolve(0))
         // If there's no error, we should update the lastSyncId.
     }
@@ -80965,7 +81000,11 @@ class zu extends Zo { // update transaction
         if (this.changeSnapshot)
             for (const e in this.changeSnapshot.changes) {
                 const n = this.changeSnapshot.changes[e].unoptimizedUpdated || this.changeSnapshot.changes[e].updated;
+                // The model's value had been updated by the delta packet, so we need to update the original value
+                // to the lastest value.
                 this.changeSnapshot.changes[e].original = this.model.serializedValue(e, this.model[e]),
+                // But eventually, the model's value should reflect what has been changed by this transaction - last writer wins,
+                // so we need to update the value again!
                 this.model.setSerializedValue(e, n, this.model.properties[e])
             }
     }
@@ -80983,10 +81022,11 @@ class zu extends Zo { // update transaction
     undoTransaction() {
         if (this.changeSnapshot) {
             for (const e in this.changeSnapshot.changes)
+                // Call `update` to create another `UpdateTransaction`.
                 this.model.setSerializedValue(e, this.changeSnapshot.changes[e].updatedFrom, this.model.properties[e]);
-            return this.syncClient.update(this.model)
+            return this.syncClient.update(this.model) // Return a correspdoing redo mutation.
         }
-        return new Tc(this.model)
+        return new Tc(this.model) 
     }
     writeLocalTransactionToDatabase(e) {
         e.put(this.model.modelName, this.model.serialize())
@@ -81018,14 +81058,15 @@ class uce { // class TranscactionQueue
         return this._onTransactionQueued
     }
     constructor(e, n) {
-        this.createdTransactions = [],
-        this.queuedTransactions = [], // all transactions that havn't been executed
-        this.executingTransactions = [], // all transcations that are trying to execute (sending them to the backend)
-        this.completedButUnsyncedTransactions = [],
+        this.createdTransactions = [], // Contains newly created transactions.
+        this.queuedTransactions = [], // Contains transactions that will be sent to the server in the next tick.
+        this.executingTransactions = [], // Contains transcations that have been sent to the server and waiting for a response.
+        this.completedButUnsyncedTransactions = [], // Contains transactions that have been accepted by the server
+        // but can not be treated as synced.
         this._onTransactionCountChange = new Tt,
         this._onTransactionQueued = new Tt,
         this.dequeueTransaction = new ww,
-        this.batchIndex = 0, // LSE may send several transactions in a batch, this batchIndex is for the batches sequence
+        this.batchIndex = 0, // LSE may send several transactions in a batch, this batchIndex is for the batches sequence.
         this.commitCreatedTransactions = new ww,
         this.handleTimedRecheck = ()=>{
             this.dequeueNextTransactions()
@@ -81042,6 +81083,7 @@ class uce { // class TranscactionQueue
     }
     update(e, n) {
         // e for the updated client model object
+        // Each Transaction has a batch index. So if some synchoronous change
         const r = new zu(e,this.batchIndex,this.syncClient,this.graphQLClient,n == null ? void 0 : n.additionalUpdateArgs);
         return n != null && n.sendSynchronously && this.transactionIsIndependentOfRunningTransactions(r) ? this.immediatelyExecuteTransaction(r) : this.enqueueTransaction(r),
         e.didUpdate(),
@@ -81082,16 +81124,18 @@ class uce { // class TranscactionQueue
             r != null && r.length && (this.persistedTransactionsEnqueue = this.persistedTransactionsEnqueue.filter(s=>!r.includes(s)))
         }
     }
+    // Transactions that will 
     rebaseTransactions(e, n) { // `e` for the model to rebase, `n` for the lastsyncid to be rebased on
         var r;
-        if (this.lastsyncid = n,
-        this.completedbutunsyncedtransactions.length && (this.completedbutunsyncedtransactions = this.completedbutunsyncedtransactions.filter(s=>(s.syncidneededforcompletion || 0) > n)),
-        (r = this.persistedtransactionsenqueue) != null && r.length || this.queuedtransactions.length || this.executingtransactions.length || this.completedbutunsyncedtransactions.length) {
-            // this line below actually show the time-sequence of these arrays.
-            // completedbutunsyncedtransactions:
-            const s = this.completedbutunsyncedtransactions.concat(this.executingtransactions, this.queuedtransactions, this.persistedtransactionsenqueue ?? []);
+        if (this.lastSyncId = n, // Update lastSyncId of TransactionQueue 
+            // Filter transcations in completedButUnsyncedTransactions. Whose `syncIdNeededForCompletion` is less or equal to the current lastSyncId will be filtered out.
+        this.completedButUnsyncedTransactions.length && (this.completedButUnsyncedTransactions = this.completedButUnsyncedTransactions.filter(s=>(s.syncIdNeededForCompletion || 0) > n)),
+        (r = this.persistedTransactionsEnqueue) != null && r.length || this.queuedTransactions.length || this.executingTransactions.length || this.completedButUnsyncedTransactions.length) {
+            // If there are transactions in any of these array, they should be rebase on the transactions.
+            // This line below actually show the time-sequence of these arrays.
+            const s = this.completedButUnsyncedTransactions.concat(this.executingTransactions, this.queuedTransactions, this.persistedTransactionsEnqueue ?? []);
             for (const i of s)
-                i instanceof zu && i.model === e && i.rebase()
+                i instanceof zu && i.model === e && i.rebase() // Only UpdateTransactions should rebase.
         }
     }
     async loadPersistedTransactions(e) {
@@ -81212,7 +81256,7 @@ class uce { // class TranscactionQueue
             const n = this.createdTransactions.concat();
             this.createdTransactions = [], // Empty created transactions.
             await this.database.putTransactions(n), // Save all queue transactions into database (offline cache)
-            this.queuedTransactions.push(...n), // move createdTransactions to queuedTransactions
+            this.queuedTransactions.push(...n), // Push createdTransactions to queuedTransactions
             this.outstandingTransactionCountChanged(),
             this.dequeueNextTransactions() // Schedule the next query.
         }
@@ -81222,7 +81266,7 @@ class uce { // class TranscactionQueue
         this.dequeueTransaction.schedule(()=>{
             // If there are no queued transacation or more than 40 transcation are executing,
             // skip this.
-            if (this.queuedTransactions.length === 0 || this.executingTransactions.length >= kw)
+            if (this.queuedTransactions.length === 0 || this.executingTransactions.length >= kw) // kw === 40
                 return;
             let e = 0; // Limit a batch's size.
             const n = this.queuedTransactions[0].batchIndex
@@ -81302,7 +81346,6 @@ class uce { // class TranscactionQueue
                 this.executingTransactions.splice(this.executingTransactions.indexOf(n), 1), // remove the transaction from exectuting transactions
                 await this.database.deleteTransaction(n.id), // once the transaction has completed, we could delete it from the database because we won't send it again
                 (!this.lastSyncId || (n.syncIdNeededForCompletion ?? 0) > this.lastSyncId) && this.completedButUnsyncedTransactions.push(n);
-                // The transaction has completed (the backend has accepte the transaction), but the corresponding delta has not yet received
             this.outstandingTransactionCountChanged(),
             this.dequeueNextTransactions()
         }
@@ -81450,7 +81493,7 @@ function RE(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-const tg = class tg {
+const tg = class tg { // TransientModelRemoval
     scheduleModelRemoval(e, n, r, s, i) {
         var l, d;
         const a = `${n}|${r}`
@@ -81463,6 +81506,7 @@ const tg = class tg {
         })
     }
     shouldApplyRemoval(e) {
+        // 
         return !(this.scheduled.size === 0 || e.action === "D" || e.action === "A" || e.action === "G" || e.action === "S")
     }
     async applyRemovalsToDatabase(e) {
@@ -81567,7 +81611,7 @@ const tg = class tg {
                     modelName: i.modelName,
                     modelId: o.modelId
                 }),
-                this.trackRemoval(o.modelId, o.syncId),
+                this.trackRemoval(o.modelId, o.syncId), 
                 this.actions.remove.set(o.modelId, {
                     type: o.type,
                     syncId: o.syncId,
@@ -81981,20 +82025,28 @@ class PE { // BatchedRequest
             return Array.isArray(n) ? n : [n]
     }
 }
-class Zu extends PE {
+class Zu extends PE { // DependentsLoader
     static async supportedPacket(e, n) {
+        // s for the sync actions that requires to load dependents
         const r = ["I", "A", "D"]
           , s = n.filter(o=>{
             var l;
-            return "modelName"in o && bce.includes(o.modelName) && (o.action === "V" || !r.includes(o.action) && o.data && ((l = Me.getModelClass(o.modelName)) == null ? void 0 : l.usedForPartialIndexes))
+            return "modelName"in o 
+                && bce.includes(o.modelName) // Only for Issue & Project
+                && (o.action === "V" ||  // If it is an unarchive action. Or
+                        !r.includes(o.action) && // 1. It is not a I, A, nor D action. // Insertion, arhiving or deletion.
+                        o.data && // 2. And its `useForPartialIndexes` data field is true. It holds true for Issue & Project.
+                        ((l = Me.getModelClass(o.modelName)) == null ? void 0 : l.usedForPartialIndexes)
+                )
         }
         )
           , i = []
-          , a = gm(s, 100);
+          , a = gm(s, 100); // 100 actions in a batch
         for (const o of a) {
             const l = await Promise.all(o.map(async d=>{
                 if (d.action === "V")
                     return d;
+                // TODO: what is transient partial index
                 const u = Zn.transientPartialIndexedKeysOfModel(d.modelName);
                 if (u.length === 0)
                     return;
@@ -82011,7 +82063,11 @@ class Zu extends PE {
                 ).concrete();
                 if (f.length === 0)
                     return;
-                if ((await Promise.all(f.map(async m=>e.objectStoreReady(m.modelName) === !0 ? !1 : await e.hasModelsForPartialIndexValues(m.modelName, [m.newPartialIndex])))).some(m=>m))
+                if ((await Promise.all(
+                    f.map(async m=>e.objectStoreReady(m.modelName) === !0 
+                        ? !1 
+                        : await e.hasModelsForPartialIndexValues(m.modelName, [m.newPartialIndex])
+                    ))).some(m=>m))
                     return d
             }
             ));
@@ -82252,7 +82308,7 @@ const vce = be.MINUTE * 2
             this.modelClassToArchivedModelLookup[i] = new Set,
             this.modelClassToTemporaryModelLookup[i] = new Set;
 
-        // Subscribe to web socket message channel
+        // Subscribe to web socket message channel.
         this.socket.onSyncMessage.subscribe(async i=>{
             try {
                 await this.applyDelta(i.sync, i.lastSyncId)
@@ -82462,7 +82518,10 @@ const vce = be.MINUTE * 2
             return this.hydrationBatch.addOperation(o, u=>this.createHydratedModels(e, [u])[0])
         }
     }
-    async hydrateModelsByIndexedKey(e, n, r) { // e for hydrated model's class, s for indexes, r for options
+    async hydrateModelsByIndexedKey(e, n, r) { 
+        // e for hydrated model's class
+        // s for indexes
+        // r for options
         var i, a;
         // The first step is to check if we need to perform a network hydration.
         const s = await this.database.getModelDataByIndexedKey(e, n, r);
@@ -82537,13 +82596,13 @@ const vce = be.MINUTE * 2
         const {userId: n, userAccountId: r} = e;
         this.userId = n,
         this.userAccountId = r;
-        const s = this.database.requiredBootstrap();
+        const s = this.database.requiredBootstrap(); // Determine the bootstrapping type.
         ((o = this.store.developerOptions) == null ? void 0 : o.forceNotLoadPartialModelsOnBootstrap) === !0 && s.type === "full" && (s.partialModels = []);
-        /** Fetch delta request. We only do delta request with a partial bootstrapping. */
+        // Fetch delta request. We only do delta request with a partial bootstrapping.
         const i = s.type === Ra.partial && this.fetchDelta(s.lastSyncId).catch(()=>{}
         );
         this._onBootstrap.fire(s.type);
-        const a = await this.database.bootstrap(); // Bootstrap the Database from here.
+        const a = await this.database.bootstrap(); // Bootstrap the database from here.
         this.firstSyncId = this.lastSyncId = a.lastSyncId,
         this.backendDatabaseVersion = a.backendDatabaseVersion,
         this.subscribedSyncGroups = new Set(a.subscribedSyncGroups);
@@ -82552,7 +82611,7 @@ const vce = be.MINUTE * 2
             // Get all models that should be hydrated when the application bootstraps.
             const u = await this.database.getAllInitialHydratedModelData()
               , h = [] // To store the model objects.
-              , f = []; // To store dehydrated model properties.
+              , f = []; // To store raw model properties.
             // Construct the models from the fetched data.
             if (xt.trace("startup", "SyncClient.bootstrap.constructModels", ()=>{
                 for (const C of Object.keys(u))
@@ -82583,7 +82642,7 @@ const vce = be.MINUTE * 2
                 lt(()=>{ // Do it in MobX's context.
                     for (const b of h)
                         b.updateFromData(f[C++]); // Dump model properties into that model object.
-                    for (const b of h) // Dehydrate references.
+                    for (const b of h) // Hydrate references.
                         b.attachToReferencedProperties()
                 }
                 )
@@ -82615,7 +82674,7 @@ const vce = be.MINUTE * 2
             return (g || (d = a.syncDeltaPackets) != null && d.length) && (Hi.addStartupSpanTag("waitingForDelta", !0),
             Jn.increment("bootstrap.waiting.delta")),
             !m && g ? (await this.database.flush(),
-            await this.startSyncing(a.type),
+            await this.startSyncing(a.type), // Start syncing incremental updates with the server.
             this.transactionQueue.confirmPersistedTransactions()) : (this._shouldResetOnError = a.type === Ra.partial,
             X0.onLoadingDone.subscribeOnce(async()=>{
                 await this.database.flush(), // For a full bootstrapping, only flush the database when onLoadingDone is triggered.
@@ -82672,12 +82731,15 @@ const vce = be.MINUTE * 2
                     const l = Math.min(this.lastSyncId, a)
                       , d = o.lastSyncId
                       , u = o.lastSequentialSyncId ?? o.lastSyncId;
+                    // Compare the local lastSyncId with the server's.
                     if (l < d) {
                         F.network("Client is not up to date, replaying...", {
                             fromSyncId: l,
                             toSyncId: d
                         });
                         try {
+                            // When the web socket connection is established,
+                            // the client will check if there are some delta packets missing from the server.
                             F.network("Requesting delta packets", {
                                 fromSyncId: l,
                                 toSyncId: d
@@ -82951,19 +83013,35 @@ const vce = be.MINUTE * 2
         this.backendDatabaseVersion = e,
         this.database.setBackendDatabaseVersion(this.backendDatabaseVersion))
     }
-    async applyDelta(e, n, r) {
+    async applyDelta(e, n, r) { // The method to handle delta packets
+        // e for the delta packets
         // receive delta from the remote server
         // e for the update events
         // n for the lastSyncId
-        e.length !== 0 && await this.updateLock.runExclusive(async()=>{
+
+        // Delta packets have to be processed in a synchronous way, so there is an update lock.
+        e.length !== 0 && await this.updateLock.runExclusive(async()=>{ 
             e.length && F.network(`Processing ${e.length} sync packets. Last sync is ${n}`, {
                 updates: e.slice(0, 200)
             });
-            const {syncGroupsChanged: s, addedSyncGroups: i, removedSyncGroups: a, loadedSyncGroupsModels: o, syncId: l} = await this.loadDeltaNewSyncGroupsModels(e);
-            let d = [];
+
+            // Step 1. This handles situations when the user's SyncGroup changes, for example, joinning a new team.
+            // The LSE will firstly load all models in that SyncGroup, because actions can only be applied to 
+            // already loaded models.
+            const {
+                syncGroupsChanged: s, 
+                addedSyncGroups: i, 
+                removedSyncGroups: a, 
+                loadedSyncGroupsModels: o, 
+                syncId: l // lastSyncId
+            } = await this.loadDeltaNewSyncGroupsModels(e);
+
+            // Step 2. To apply some delta packets, models must be loaded into the memory. So LSE will
+            // immediately load the models.
+            let d = []; // dependents models
             const u = await Zu.supportedPacket(this.database, e);
             if (u.length > 0) {
-                const f = new Zu(this.graphQLClient,!1,3)
+                const f = new Zu(this.graphQLClient,!1,3) // Not include dependent and max retry for 3 times.
                   , p = f.allProcessedResult();
                 for (const m of u)
                     F.network(`Loading dependencies for ${m.modelName} with id ${m.data.id}`),
@@ -82972,31 +83050,41 @@ const vce = be.MINUTE * 2
                         identifier: m.data.id
                     }).catch(()=>{}
                     );
+                // LSE will await all models are loaded into the database before continue to processing models.
                 d = (await p).flatMap(m=>m).filter(m=>Me.getModelClass(m.__class))
             }
+
+            // Write to the database
             await this.database.writeTransaction({
                 metaStore: !0,
                 syncActionStore: !0
             }, async f=>{
-                i.size > 0 && this.addNewSyncGroupsToDatabase([...i], o, f);
+                // Step 3, write new models into the database.
+                i.size > 0 && this.addNewSyncGroupsToDatabase([...i], o, f); // Write models of new sync groups into database.
                 for (const m of d) {
                     const {__class: g, ...C} = m;
-                    f.put(g, C)
+                    f.put(g, C) // Write dependents into database.
                 }
-                const p = new qd(this,r);
-                for (const m of e)
+                
+                // Step 4, loop through all sync actions and resolve them to update the local database.
+                const p = new qd(this,r); // Create a TransientModelRemoval helper class to schedule removing of models.
+                for (const m of e) // Loop through all actions.
                     switch (f.addSyncPacket(m),
+                    // Continuous removal actions should be performed in a batched way.
                     p.shouldApplyRemoval(m) === !0 && await p.applyRemovalsToDatabase(f),
                     m.action) {
                     case "I": // Insertion
                     case "V": // Unarchive
                     case "U": // Updation
-                        f.put(m.modelName, m.data),
-                        this.transactionQueue.modelUpserted(m.modelId);
+                        f.put(m.modelName, m.data), // Write model data into database.
+                        // If the client is going to create a model that is already
+                        // inserted, unarhived, updated, the InsertionTransaction should be cancelled.
+                        this.transactionQueue.modelUpserted(m.modelId); 
                         break;
-                    case "C": // Covering partial data
+                    case "C": // Partially cover a model
                         const g = await f.get(m.modelName, m.modelId);
                         g ? (Object.assign(g, m.data),
+                        // Write the covered model data into database.
                         f.put(m.modelName, g)) : F.error("Did not have model for C packet", void 0, {
                             id: m.modelId,
                             modelName: m.modelName
@@ -83011,32 +83099,37 @@ const vce = be.MINUTE * 2
                     case "G":
                     case "S": // Change SyncGroups
                         const b = this.changedSyncGroups(m.data.syncGroups, this.subscribedSyncGroups).removedGroups.filter(k=>a.has(k));
-                        b.length && await this.removeSyncGroups(b, f, p, m.id);
+                        b.length && await this.removeSyncGroups(b, f, p, m.id); // Delete model of the SyncGroups the user left from.
                         break
                     }
-                await p.applyRemovalsToDatabase(f),
+                await p.applyRemovalsToDatabase(f), // Finish the loop above.
+
+                // Step 4. Loop actions to update in-memory model.
                 lt(()=>{
                     var C;
-                    const m = new Map;
+                    const m = new Map; 
+                    // New models created by this delta packet.
+                    // It maps the model object with the sync action's id
+                    // that creates the object.
                     i.size > 0 && this.addNewSyncGroupsToClient([...i], o, l, m);
-                    // there are two loops of deltas
-                    // why necessary? remains unclear to me
+
                     for (const b of e)
                         switch (b.action) {
                         case "I":
                         case "V":
                         case "U":
-                            // Instead of sending the changed property, LSE send the whole data to the clients!
                             const k = Me.getModelClass(b.modelName);
                             if (k) {
                                 let D = this.findById(k, b.data.id);
+                                // For inserting, unarchiving and updating actions,
+                                // should move the model from archive collections
+                                // or create the model.
                                 if (D && D.isArchived && (b.action === "I" || r === !0) && (this.removeModelFromArchiveCollections(D),
                                 D = void 0),
                                 !D) {
                                     let R;
                                     try {
-                                        R = this.createModel(k, b.data) // or try to create model,
-                                        // if the model already exists, it would set data instead
+                                        R = this.createModel(k, b.data)
                                     } catch (T) {
                                         throw F.error("Error creating model from sync packet", T, {
                                             packetId: b.id,
@@ -83050,6 +83143,8 @@ const vce = be.MINUTE * 2
                             }
                             break;
                         case "A":
+                            // If the archived model lives in the object pool,
+                            // update all its properties first.
                             const S = this.findById(at, b.modelId);
                             S && b.data && S.updateFromData(b.data, {
                                 dataContainsAllProperties: !0
@@ -83059,42 +83154,55 @@ const vce = be.MINUTE * 2
                     const g = p.removedModelIds;
                     for (const [b,k] of m) {
                         const S = g.get(b.id);
-                        S !== void 0 && S >= k && m.delete(b)
+                        S !== void 0 && S >= k && m.delete(b) // If models created by actions
+                        // in this delta packet get removed by later actions in the same 
+                        // delta packet, it will be removed from here.
                     }
+
+                    // After that we can ensure that models in m will be alive after this delta
+                    // packet, so we are of two create instances for these models.
                     for (const [b] of m)
                         b.attachToReferencedProperties(),
                         this.store.delayedRelationManager.resolveDelayedRelation(b);
                     d.length && this.createModelsFromData(d);
+
+                    // Change in-memory models.
                     for (const b of e)
+                        // Similar to the above code.
                         switch (p.shouldApplyRemoval(b) === !0 && p.applyRemovalsToSyncClient(b.id),
                         b.action) {
-                        case "I": // Insert
+                        case "I":
                         case "V":
-                        case "U": // update?
+                        case "U": 
                         case "C": 
+                            // If the model is in Object Pool, update its properties.
+                            // Instead of sending the changed property, LSE send the whole data to the clients!
                             const k = this.findById(at, b.modelId);
                             k && (k.updateFromData(b.data, {
-                                dataContainsAllProperties: b.action !== "C"
+                                dataContainsAllProperties: b.action !== "C" // The action will contains all properties if it is not
+                                // a Partial Covering action.
                             }),
-                            // rebase the model on lastSyncId
+                            // Rebase the model on `lastSyncId`. 
                             this.transactionQueue.rebaseTransactions(k, n));
                             break;
-                        case "A": // delete issue is actually archiving it
+                        case "A":
                             p.scheduleModelRemoval("archival", b.modelName, b.modelId, b.id);
                             break;
-                        case "D": // but deleting comment is actually a deletion!
+                        case "D":
                             p.scheduleModelRemoval("deletion", b.modelName, b.modelId, b.id);
                             break
                         }
                     p.applyRemovalsToSyncClient(((C = e.at(-1)) == null ? void 0 : C.id) || Number.MAX_SAFE_INTEGER),
                     p.reportPerformance(),
-                    this.lastSyncId = Math.max(this.lastSyncId, n), // finally update sync id
-                    f.setLastSyncId(this.lastSyncId),
-                    i.size && (this.setFirstSyncId(this.lastSyncId),
+
+                    // Step 5. Update medata and complete transactions withing for this `lastSyncId`.
+                    this.lastSyncId = Math.max(this.lastSyncId, n), // Update lastSyncId to the latest received.
+                    f.setLastSyncId(this.lastSyncId), // Write `lastSyncId` into database.
+                    i.size && (this.setFirstSyncId(this.lastSyncId), // If there's newly added SyncGroups, update `firstSyncId` as well.
                     f.setFirstSyncId(this.lastSyncId)),
-                    this.syncWaitQueue.progressQueue(this.lastSyncId),
+                    this.syncWaitQueue.progressQueue(this.lastSyncId), // If some transactions are waiting for a lastSyncId to complete, complete them.
                     s && this._onSyncGroupsChanged.fire(),
-                    f.commit()
+                    f.commit() // Commit changes into database.
                 }
                 )
             }
@@ -83107,15 +83215,16 @@ const vce = be.MINUTE * 2
         )
     }
     async loadDeltaNewSyncGroupsModels(e) {
-        const n = new Set
-          , r = new Set
-          , s = new Set
+        const n = new Set // AddedSyncGroups
+          , r = new Set // for removedSyncGroups
+          , s = new Set  // loadedSyncGroups
           , i = new Set;
-        let a = 0;
+        let a = 0; // firstSyncId to partially bootstrapping models
         const o = new Set(this.subscribedSyncGroups);
         for (const h of e)
+            // Only deal with actions whose type is G or S.
             if (h.action === "G" || h.action === "S") {
-                a = Math.max(a, h.id);
+                a = Math.max(a, h.id); // Find the largest mutation id.
                 const f = this.changedSyncGroups(h.data.syncGroups, o);
                 for (const p of f.addedGroups)
                     o.add(p),
@@ -83141,7 +83250,8 @@ const vce = be.MINUTE * 2
                 }
                 ,
                 shouldRetry: f=>hd(f)
-            }, ()=>Oo.partialBootstrap(this.graphQLClient, h, [...s], {
+            }, ()=>Oo.partialBootstrap(this.graphQLClient, h, [...s], { 
+                // It actually call partialBootstrap to fetch missing instances of all models of that sync group.
                 firstSyncId: a
             })).then(f=>[f.data, f.lastSyncId])
         }
@@ -83162,7 +83272,7 @@ const vce = be.MINUTE * 2
             removedGroups: s
         }
     }
-    async removeSyncGroups(e, n, r, s) {
+    async removeSyncGroups(e, n, r, s) { // If a user is removed from a SyncGroup, e.g a team, LSE will remove all models in that syncGroup.
         if (e.length === 0)
             return;
         F.network(`Removing sync groups ${e.join(", ")}`);
@@ -83176,6 +83286,8 @@ const vce = be.MINUTE * 2
             (d == null ? void 0 : d.modelName) === "Team" && this.subscribedSyncGroups.has(i) ? r.scheduleModelRemoval("deletion", d.modelName, d.id, s, {
                 only: ["Attachment", "Comment", "Cycle", "CustomView", "DocumentContent", "Facet", "Favorite", "Issue", "IssueProgressSnapshot", "IssueHistory", "Project", "ViewPreferences", "TriageResponsibility", "ViewPreferences"]
             }) : r.scheduleModelRemoval("deletion", (d == null ? void 0 : d.modelName) || "Team", o, s),
+            // Resetting the whole database in some cases.
+            // It basically clears the entire database and rebootstraps!
             (o === i || o === a) && (l ? (F.remote("Resetting due to admin/fullMember access group change"),
             await this.resetLocalDatabase().finally(async()=>{
                 window.location.replace(window.location.href),
@@ -83758,7 +83870,7 @@ class Ace {
     }
 }
 const Aw = 100;
-class jce {
+class jce { // UndoRedoQueue
     get nextUndoOperation() {
         return this.undoQueue[this.undoQueue.length - 1]
     }
@@ -83818,7 +83930,8 @@ class jce {
         if (e) {
             const n = {
                 ...e,
-                transactions: e.transactions.reverse().map(r=>r.undoTransaction()),
+                transactions: e.transactions.reverse().map(r=>r.undoTransaction()), // For undo, LSE need to undo transactions in a reversed order.
+                // And at the same time the corresponding transactions to redo these changes will be generated, and pushed to the redoQueue.
                 time: new Date
             };
             n.customCallbacks && n.customCallbacks.undo(),
@@ -84111,14 +84224,14 @@ const sg = class sg { // class SyncedStore
             userId: e,
             userAccountId: n,
             organizationId: r,
-            modelSchemaHash: Me.schemaHash // the schema hash would be used here to detect if there is a database migration
+            modelSchemaHash: Me.schemaHash // The schema hash would be used here to detect if there is a database migration
         };
         this.syncClient.onTransactionCountChange.subscribe(this.handleTransactionCountChange),
         // In this line StoreManager will be constructed.
-        // So the ObjectStores are created before database initialization.
+        // So the ObjectStores are created before database get intialized.
         this.syncClient.onSavingStoreCountChange.subscribe(this.handleSavingStoreCountChange);
         try {
-            return await this.syncClient.initializeDatabase(s), // <- Create databases and tables.
+            return await this.syncClient.initializeDatabase(s), // <- Create object stores and databases.
             await this.syncClient.bootstrap(s) // <- Boostrap!
         } catch (i) {
             return {
@@ -84141,21 +84254,25 @@ const sg = class sg { // class SyncedStore
     async waitForSync() {
         return await this.syncClient.waitForSync()
     }
-    save(e, n=!1, r) { // Determined what kind of transaction need to be dispatched in this funciton.
+    save(e, n=!1, r) { // Determined what kind of transaction need to generate.
         // e for the model that changed
         return this.saveForLocalTransaction(e, r) 
             ? new Tc(e)  // If it should be a local transaction. It would return from here.
             : (e.shouldSetUpdatedAt && (e.updatedAt = new Date),
+        // How to determine what kind of transaction need to generate here:
+        // checking if the model live in Object Pool.
+        // If it exists, `UpdateTransaction`.
+        // If not, `InsertTransaction`.
         this.syncClient.findById(at, e.id, {
             excludeTemporaryModels: !0
-        }) ? (e.beforeSave(!1), // nullable false, beforeSave only works for "Document" at the moment
-        this.syncClient.update(e, r)) // generete a UpdateTransaction object
-        : (e.beforeSave(!0), // nullable true
+        }) ? (e.beforeSave(!1), // `beforeSave` only works for "Document" at the moment so I will not dive in.
+        this.syncClient.update(e, r)) // generete an UpdateTransaction by calling `SyncClient.update`.
+        : (e.beforeSave(!0), 
         this.removeTemporarily(e),
         n ? (e.createdAt = new Date,
         e.prepareForAdd(),
         e.observePropertyChanges(),
-        this.syncClient.add(e, r)) : new Tc(e))) // a AddTransaction or a LocalTransaction
+        this.syncClient.add(e, r)) : new Tc(e))) // generate an InsertionTransaction by calling `SyncClient.add`.
     }
     addTemporarily(e) {
         return this.syncClient.temporarilyAdd(e)
@@ -84493,6 +84610,9 @@ class wm extends PE { // BatchModelLoader
             },
             method: "POST",
             body: JSON.stringify({
+                // Note we are using `firstSyncId` not `lastSyncId` here. Why?
+                // This is an interesting question. Because we should put partial syncing and 
+                // incremental updates both into consideration.
                 firstSyncId: this.graphQLClient.getFirstSyncId(),
                 requests: e.map(o=>({
                     ...o.request,
@@ -84986,6 +85106,7 @@ class km extends hf { // some class extends SyncedStore
             if (!this.userId || !this.userAccountId || !this.applicationStore.currentOrganization)
                 throw Error("Trying to bootstrap anonymously");
             this.applicationStore.currentUser && F.setUser(this.applicationStore.currentUser);
+            // -> Important. Call `bootstrap` here.
             const r = await this.bootstrap({
                 userId: this.userId,
                 userAccountId: this.userAccountId,
