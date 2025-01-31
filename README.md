@@ -1,6 +1,6 @@
 # A Reverse Study of Linear Sync Engine
 
-> [!WARN]
+> [!WARNING]
 > WORK IN A PROGRESS
 
 I work on collaborative softwares, focusing on rich text editors and spreadsheets. **Collaboration engines**, also known as **data sync engines**, play a pivotal role in enhancing user experience in these softwares. They enable real-time, simultaneous edits on the same file while offering features like offline availability and file history. Typically, engineers use **[Operational Transformation (OT)](https://en.wikipedia.org/wiki/Operational_transformation)** or **[Conflict-free Replicated Data Types (CRDTs)](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type)** to build sync engines. While these technologies are effective for editors and spreadsheets, they may not be ideal for other types of applications. Here's why.
@@ -145,13 +145,13 @@ Models' metadata includes:
 
 In the next chapter, we will explore how this metadata influences the loading behavior of models.
 
-![[Writings/Reverse LSE/models/model-registry.png]]
+![](./imgs/count-of-models.png)
 
 _When I started writing this post, there were 76 models in Linear. As I am about to finish, there are 80 models._
 
-> [!NOTE] 
+> [!NOTE]
 > **What is `local` used for in a sync engine like Linear Sync Engine?**  
-> 
+>
 > During his presentation at Local First Conf, Tuomas explained how new features can be developed without modifying server-side code. This is accomplished by setting the load strategy to `local` for any new model, ensuring that it persists or boots only in the local IndexedDB. Once the model is finalized, syncing is enabled by changing its load strategy from `local` to one of the other strategies.
 
 LSE uses **TypeScript decorators** to register metadata in `ModelRegistry`. The decorator responsible for registering models' metadata is `ClientModel` (also known as `We`).
@@ -298,7 +298,7 @@ _There are lots of `referenceModel` and `reference` pairs in the `ModelRegistry`
 
 `ModelRegistry` includes a special property called **`__schemaHash`**, which is a hash of all models' metadata and their properties' metadata. This hash is crucial for determining whether the local database requires migration, a topic covered in detail in a later chapter. I have already added comments in the source code explaining how it is calculated, so I won’t repeat that here.
 
-> [!INFO] 
+> [!INFO]
 > TypeScript Decorators  
 >
 > When TypeScript transpiles decorators, it processes property decorators before model decorators. As a result, property decorators are executed first. By the time `ModelRegistry.registerModel` is called, all properties of that model have already been registered, and their metadata will also be included in the `__schemaHash`.
@@ -327,4 +327,3 @@ Here’s a quick summary of what we’ve learned:
 - Models and properties in LSE are governed by metadata that defines their behavior.
 - LSE leverages decorators to register various elements—models, properties, and references—within the `ModelRegistry`.
 - LSE uses `Object.defineProperty` to implement getters and setters, enabling reference handling and observability for properties, and thereby for models.
-
