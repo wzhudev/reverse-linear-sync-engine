@@ -362,20 +362,21 @@ There are three types of bootstrapping in LSE: **full bootstrapping**, **partial
 
 The first step in the bootstrapping process is the construction of `StoreManager`. This module is responsible for creating and managing `ObjectStore` instances for each model registered in the `ModelRegistry`. Each `ObjectStore` handles the corresponding table for its model in IndexedDB.
 
-![[object-stores.png]]
+![object-stores.png](./imgs/object-stores.png)
+
 _There are 80 kinds of models so there are 80 `ObjectStore` consequently._
 
 As mentioned earlier, models have `loadStrategy` metadata, and LSE generates corresponding store types based on this field. Models with a `partial` load strategy are managed by `PartialObjectStore` (`p3`, `Jm`), while all other models use `FullObjectStore` (`TE`).
 
 When an `ObjectStore` is created, it computes a hash for its associated model, which is used as the table's name in the database. For example, the `Issue` model has a `storeName` of `119b2a...`, corresponding to a table with the same hash.
 
-![[Pasted image 20250125172227.png]]
+![](./imgs/model-store-class.png)
 
-![[Pasted image 20250125172324.png]]
+![](./imgs/model-store-db.png)
 
 Notably, for models with a `loadStrategy` of `partial`, an additional database named `<hash>_partial` will be created. This database stores indexes that facilitate lazy loading of these models. We will explore this mechanism in detail at the end of this chapter.
 
-![[Pasted image 20250125173116.png]]
+![](./imgs/model-partial-store-db.png)
 
 ### Create Databases & Tables in IndexedDB
 
@@ -390,8 +391,9 @@ After `ObjectStore`s are constructed, the next step is to prepare the database�
 LSE maintains two types of databases in IndexedDB: `linear_databases` and others with names like `linear_(hash)`.
  
 **`linear_databases`**: This database stores information about other databases. LSE creates a separate database for each logged-in user in a workspace. If the user is part of multiple workspaces, LSE creates a database for each logged-in workspace.
+
+<!-- TODO: 缺少一个展示 linear_databases 内容的截图 -->
   
-![[Pasted image 20250125173434.png]]
 
 The database information includes:
 
@@ -406,12 +408,15 @@ and so on. You can checkout how this information is calculated in `jn.databaseIn
 Inside these databases, there are tables for each model, as we discussed in the previous section. Additionally, it includes two special tables:
 
 The first table is **`_meta`**, which holds persistence details for each model, as well as the database's metadata.
- ![[_meta.png]]
-*Model persistance state.*
+
+![](./imgs/meta-persistence.png)
+
+*Model persistence state.*
 
 Each model has a corresponding record in the `_meta` table. If the `persisted` field is set to `true`, it indicates that all instances of that model within the workspace have been loaded onto the client.
 
-![[Pasted image 20250126094512.png]]
+![](./imgs/meta-meta.png)
+
 *Database's metadata*
 
 The database's metadata fields includes:
@@ -428,7 +433,7 @@ When a transaction is successfully executed by the server, the global **`lastSyn
 
 The server includes the updated `lastSyncId` in its response to the client that initiated the transaction. Additionally, when the server broadcasts delta packets (which represent incremental changes) to all clients, these packets are also associated with the corresponding `lastSyncId`. This ensures that clients can synchronize their local state with the server using the latest database version.
 
-![[Pasted image 20250126112152.png]]
+![](./imgs/lastsyncid.png)
 
 The concept of **`lastSyncId`** is similar to a **file revision number** in operational transformation (OT) algorithms. (For more details, you can check out my [detailed article on OT](https://wzhu.dev/posts/ot).) However, unlike a file revision number that typically applies to a single file, **`lastSyncId` spans the entire database**, regardless of which workspace the changes occur in.
 
@@ -464,7 +469,8 @@ This concept is crucial in LSE. While all workspaces share the same `lastSyncId`
 
 The explanation above covered the `_meta` table. Now, let’s discuss the second special table: **`_transaction`**. This table stores unsent transactions or those queued for server synchronization. We’ll delve deeper into the details of transactions in the next chapter.
 
-![[Pasted image 20250126094921.png]]
+![](./imgs/cached-transactions.png)
+
 *Cached transactions*
 
 Let’s return to the bootstrapping process and explore how these two types of databases are created in IndexedDB. Please refer to `ng.initializeDatabase` (`SyncClient.initializeDatabase`) for source code and comments.
@@ -931,7 +937,7 @@ issue.assignee = user;
 issue.save();
 ```
 
-![[transaction-overview.png]]
+![](./imgs/transaction-overview.png)
 
 Let’s start by getting a high-level overview of the process before diving into the details in the sections below.
 
@@ -983,7 +989,7 @@ When a property of a model is assigned a new value, the setter intercepts the as
 
 Next, `markPropertyChanged` is called to serialize the **old value** and store it in `modifiedProperties`. Later, it will be used to generate a transaction.
 
-![[modified-properties.png]]
+![](./imgs/modified-properties)
 
 Before `save()` is called, the **model in memory has already been updated**! Transactions are **not** responsible for updating in-memory models—this happens immediately when a property is changed. However, transactions do play a role in **undo** and **redo** operations and updateing in-memory models. We’ll dive deeper into this topic in **Chapter 5**.
 
@@ -1006,9 +1012,7 @@ as.save
 
 If the model exists in the Object Pool, an `UpdateTransaction` will be generated. During the construction of `UpdateTransaction`, the model's `changeSnapshot` function will be called. Ultimately, an object is generated to represent the changes and bound to `changeSnapshot` property of `UpdateTransaction`. 
 
-%% TODO: add a snapshot to demonstrate what the object will look like. %%
-
-![[Pasted image 20241229175450.png]]
+<!-- TODO: add a snapshot to demonstrate what the object will look like. -->
 
 ```json
 { 
@@ -1027,7 +1031,7 @@ An `UpdateTransaction` has the following properties:
 - `model`: the in-memory model object this transaction is related to 
 - `batchIndex`: each transaction has a `batchIndex`. Transactions that have the same `batchIndex` will be sent to the server in batch.
 
-Besides `UpdatingTransaction`, there are 4 kinds of transactions and `TransactionQueue` provides corresponding methods to construct them. But in this post, let's foucs on `UpdatingTransaction` solely.
+Besides `UpdatingTransaction`, there are 4 kinds of transactions and `TransactionQueue` provides corresponding methods to construct them. But in this post, let's focus on `UpdatingTransaction` solely.
 
 | Minimized name | Possible original names | Description                                                             |
 | -------------- | ----------------------- | ----------------------------------------------------------------------- |
