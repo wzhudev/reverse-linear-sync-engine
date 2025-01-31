@@ -64696,7 +64696,7 @@ function ca(t, e, n, r) {
     return s > 3 && i && Object.defineProperty(e, n, i),
     i
 }
-const ad = class ad extends It {
+const ad = class ad extends It { // Attachment
     static createFromDraftAttachment(e, n) {
         const r = ad.create({
             url: e.url,
@@ -84689,7 +84689,7 @@ class wm extends PE { // BatchModelLoader
         }
         const i = await Promise.all(r.map(async d=>{
             var u;
-            // Call database.loadPartialModels
+            // Call database.loadPartialModels to load partial models of sync groups
             return (u = this.database) == null ? void 0 : u.loadPartialModels([...d.modelName], [...d.syncGroups]).catch(h=>{
                 throw F.error("Partial load models query error", h, {
                     modelNames: [...d.modelName]
