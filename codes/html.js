@@ -82746,6 +82746,8 @@ const vce = be.MINUTE * 2
                                 fromSyncId: l,
                                 toSyncId: d
                             });
+                            // Since applyDelta use updateLock, so catching up deltas would be applied first?
+                            // Is fetchDelta always that fast?
                             const f = await this.fetchDelta(l, d, e === Ra.full && !n);
                             await this.applyDelta(f, u, !0),
                             this.deltaSyncFailures = 0,
@@ -83558,7 +83560,7 @@ const _ce = 3
   , Ice = be.SECOND * 20
   , wu = be.MINUTE * 30
   , Ece = be.MINUTE * 5
-  , rg = class rg {
+  , rg = class rg { // SyncWebSocket
     get onConnect() {
         return this._onConnect
     }
@@ -83845,7 +83847,7 @@ const _ce = 3
 }
 ;
 rg.constructorName = "SyncWebSocket";
-let uf = rg;
+let uf = rg; // SyncWebSocket
 var Ew;
 (function(t) {
     t[t.connected = 0] = "connected",

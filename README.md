@@ -24,10 +24,10 @@ issue.save();
 
 I believe LSE is exactly what I've been looking for, so I decided to reverse-engineer its frontend code to understand how it works. Additionally, I'm documenting my findings to help others who are interested as I am.
 
->[!INFO]
+> [!INFO]
 > Good References
 >
->This [gist](https://gist.github.com/pesterhazy/3e039677f2e314cb77ffe3497ebca07b#gistcomment-5184039) introduces some off-the-shelf solutions, such as ElectricSQL and ZeroSync (which, BTW, I am also very curious about), for general-purpose synchronization. You might want to check them out as well.
+> This [gist](https://gist.github.com/pesterhazy/3e039677f2e314cb77ffe3497ebca07b#gistcomment-5184039) introduces some off-the-shelf solutions, such as ElectricSQL and ZeroSync (which, BTW, I am also very curious about), for general-purpose synchronization. You might want to check them out as well.
 
 In this post, we will explore how LSE:
 
@@ -39,29 +39,31 @@ In this post, we will explore how LSE:
 - Syncs clients with the server.
 - Handles undo and redo.
 
-To help you better understand how the Linear Sync Engine (LSE) works at the code level, I’ve uploaded a version of Linear’s (uglified) code with detailed comments. These annotations provide additional insights that may not be covered in this post. Since the identifiers' names are obfuscated, I’ve done my best to infer their possible original names. At the end of the post, you’ll also find a table mapping abbreviated terms to their full forms.
+To help you better understand how the Linear Sync Engine (LSE) works at the code level, I've uploaded a version of Linear's (uglified) code with detailed comments. These annotations provide additional insights that may not be covered in this post. Since the identifiers' names are obfuscated, I've done my best to infer their possible original names. At the end of the post, you'll also find a table mapping abbreviated terms to their full forms.
 
-For the best experience, I recommend cloning the repository and viewing the code in your favorite editor. This allows you to refer to the code alongside the text for a more seamless reading experience. Personally, I suggest using VS Code because its TypeScript language service handles large files exceptionally well. Additionally, I’ll include callouts at the beginning of each section to highlight relevant code snippets. You can easily jump to these by searching for symbols using the shortcut <kbd>Ctrl + Shift + O</kbd> (or <kbd>Meta + Shift + O</kbd> on macOS).
+For the best experience, I recommend cloning the repository and viewing the code in your favorite editor. This allows you to refer to the code alongside the text for a more seamless reading experience. Personally, I suggest using VS Code because its TypeScript language service handles large files exceptionally well. Additionally, I'll include callouts at the beginning of each section to highlight relevant code snippets. You can easily jump to these by searching for symbols using the shortcut <kbd>Ctrl + Shift + O</kbd> (or <kbd>Meta + Shift + O</kbd> on macOS).
 
 ![search-for-symbols](./imgs/search-for-symbols.png)
 
-I am not affiliated with the Linear team, nor have I consulted them while writing this article. As a result, there may be inaccuracies or discrepancies with the actual implementation. However, I’ve made every effort—especially by watching relevant talks and comparing LSE to well-studied operational transformation (OT) approaches—to ensure that my description of the LSE approach is as accurate as possible. I hope it serves as a valuable reference for building a similar collaborative engine. If you spot any errors or misleading information, please submit an issue or a pull request to help me correct it. Your feedback is greatly appreciated!
+I am not affiliated with the Linear team, nor have I consulted them while writing this article. As a result, there may be inaccuracies or discrepancies with the actual implementation. However, I've made every effort—especially by watching relevant talks and comparing LSE to well-studied operational transformation (OT) approaches—to ensure that my description of the LSE approach is as accurate as possible. I hope it serves as a valuable reference for building a similar collaborative engine. If you spot any errors or misleading information, please submit an issue or a pull request to help me correct it. Your feedback is greatly appreciated!
 
-That said, I may inevitably fall victim to the [curse of knowledge](https://en.wikipedia.org/wiki/Curse_of_knowledge). If anything is unclear, the fault is mine, and I’d be more than happy to provide further explanations. Feel free to open an issue, and I’ll gladly add more details—or even diagrams—to make the article easier to understand.
+That said, I may inevitably fall victim to the [curse of knowledge](https://en.wikipedia.org/wiki/Curse_of_knowledge). If anything is unclear, the fault is mine, and I'd be more than happy to provide further explanations. Feel free to open an issue, and I'll gladly add more details—or even diagrams—to make the article easier to understand.
 
-With that out of the way, let’s dive in!
+With that out of the way, let's dive in!
 
 ## Introduction
 
-![introduction to LSE](./imgs/introduction.png)
+If you haven't yet watched Tuomas' [two](https://www.youtube.com/watch?v=WxK11RsLqp4&t=2175s) [ talks](https://linear.app/blog/scaling-the-linear-sync-engine), a [podcast](https://www.devtools.fm/episode/61), and a [presentation at Local First Conf](https://www.youtube.com/watch?v=VLgmjzERT08) about LSE, I highly recommend exploring them out before proceeding. These resources provide valuable context. However, here are the core concepts behind LSE:
 
-If you haven’t yet watched Tuomas’ [two](https://www.youtube.com/watch?v=WxK11RsLqp4&t=2175s) [ talks](https://linear.app/blog/scaling-the-linear-sync-engine), a [podcast](https://www.devtools.fm/episode/61), and a [presentation at Local First Conf](https://www.youtube.com/watch?v=VLgmjzERT08)  about LSE, I highly recommend exploring them out before proceeding. These resources provide valuable context. However, here are the core concepts behind LSE:
+![introduction to LSE](./imgs/introduction.png)
 
 **Model**
 
-Entities such as **"Issue," "Team," "Organization," and "Comment"** are referred to as **models** in LSE. These models possess **properties** and **references** to other models, many of which are observable (via **MobX**) to automatically update views when changes occur. In essence, models and properties include **metadata** that dictate how they behave in LSE.
+Entities such as `Issue`, `Team`, `Organization`, and `Comment` are referred to as **models** in LSE. These models possess **properties** and **references** to other models, many of which are observable (via **MobX**) to automatically update views when changes occur. In essence, models and properties include **metadata** that dictate how they behave in LSE.
 
-Models can be loaded from either the **local database** (IndexedDB) or the server. Some models are only **partially loaded** and can be **hydrated** on demand, either from the local database or by fetching additional data from the server. Once loaded, models are stored in an **Object Pool**, which serves as a large map for retrieving models by their **UUIDs**.
+Models can be loaded from either the **local database** (IndexedDB) or the server. Some models supports **partially loading** and can be loaded on demand, either from the local database or by fetching additional data from the server. Once loaded, models are stored in an **Object Pool**, which serves as a large map for retrieving models by their **UUIDs**.
+
+Models can be **hydrated** lazily, meaning its properties can be loaded only when accessed. This mechanism is particularly useful for improving performance by loading only the necessary data.
 
 Operations—such as additions, deletions, updates, and archiving—on models, their properties, and references are encapsulated as **transactions**. These transactions are sent to the server, executed there, and then broadcast as **delta packets** to all connected clients. This ensures data consistency across multiple clients.
 
@@ -69,17 +71,23 @@ Operations—such as additions, deletions, updates, and archiving—on models, t
 
 Operations sent to the server are packaged as **transactions**. These transactions are intended to execute **exclusively** on the server and are designed to be **reversible** on the client in case of failure. If the client loses its connection to the server, transactions are temporarily **cached** in IndexedDB and automatically resent once the connection is reestablished.
 
+Transactions are associated with a **sync id**, which is a monotonically increasing number that ensures the correct order of operations. This number is crucial for maintaining consistency across all clients.
+
 Additionally, transactions play a key role in supporting **undo** and **redo** operations, enabling seamless changes and corrections in real-time collaborative workflows.
 
 **Delta packets**
 
-Once transactions are executed, the server broadcasts **delta packets** to all clients—including the client that initiated the transaction—to update the models.
+Once transactions are executed, the server broadcasts **delta packets** to all clients—including the client that initiated the transaction—to update the models. A delta packet contains several **sync action**s, and each action is associated with a **sync id** as well. This mechanism prevents clients from missing updates and helps identify any missing packets if discrepancies occur.
 
-The **delta packets** may differ from the original transactions sent by the client, as the server might perform **side effects** during execution (e.g., generating history). Each delta packet is associated with a **lastSyncId**, a monotonically increasing number that ensures LSE maintains the correct order of delta packets. This mechanism prevents clients from missing updates and helps identify any missing packets if discrepancies occur.
+The **delta packets** may differ from the original transactions sent by the client, as the server might perform **side effects** during execution (e.g., generating history).
+
+---
 
 In the following chapters, we will explore these concepts in detail, along with the corresponding modules that manage them. We'll begin with the **"Model"**.
 
-## Chapter 1: Defining Models
+## Chapter 1: Defining Models and Metadata
+
+First and foremost, we need to figure out how models are defined in LSE.
 
 ### `ModelRegistry`
 
@@ -92,25 +100,25 @@ When Linear starts, it first generates metadata for models, including their prop
 
 ![model registry](./imgs/model-registry.png)
 
->[!INFO]
+> [!INFO]
 > Uglified Names
 >
-> The names in the screenshots (`Xs` for example) may differ from those in the source code available on the GitHub repository (`rr`). This is completely normal, as Linear's outstanding continuous deployment pipeline enables them to ship updates nearly every half hour!
+> The names in the screenshots (e.g., Xs) may differ from those in the GitHub source code (rr). Additionally, names may vary across different screenshots. This is completely normal, as Linear ships nearly every half hour!
 
 `ModelRegistry` is a class with static members that store various types of metadata and provide methods for registering and retrieving this information. For example:
 
-- **`modelLookup`**: Maps a model’s name to its constructor.
-- **`modelPropertyLookup`**: Stores metadata about a model’s properties.
-- **`modelReferencedPropertyLookup`**: Stores metadata about a model’s references.
+- **`modelLookup`**: Maps a model's name to its constructor.
+- **`modelPropertyLookup`**: Stores metadata about a model's properties.
+- **`modelReferencedPropertyLookup`**: Stores metadata about a model's references.
 - etc.
 
-We will discuss how some of this metadata is registered, focusing particularly on models and their properties.
+We will discuss how some of this metadata is registered in this chapter, focusing particularly on models and their properties.
 
 ### Model
 
-> [!NOTE] 
+> [!NOTE]
 > Code References
-> 
+>
 > - `We`: `ClientModel` decorator
 > - `as`: `Model` base model class
 > - `re` `Vs`: `Issue` model class
@@ -127,32 +135,29 @@ LSE uses JavaScript's `class` keyword to define models, with all model classes e
 - **`propertyChanged`, `markPropertyChanged`, `changeSnapshot`**: Methods that track property changes and generate an `UpdateTransaction`.
 - **etc.**: Additional important properties and methods will be discussed in subsequent chapters.
 
-> [!NOTE] 
-> **Changes to `_mobx`**  
-> 
-> During the writing of this post, the Linear team updated how properties are stored. The `_mobx` object was removed, and each model now includes a `__data` property to store property values. This change impacts the implementation of certain decorators and the hydration process. However, the core concept remains unchanged, so I have not revised the related sections of this post.
+> [!NOTE]
+> While writing this post, the Linear team updated how properties are stored. The `_mobx` object was removed, and each model now uses a `__data` property to store property values. This change affects the implementation of certain decorators and the hydration process. However, it does not impact our understanding of LSE, so I have not revised the related sections of this post.
 
 Models' metadata includes:
 
-1. **`loadStrategy`**: Defines how models are loaded into memory. There are five strategies:
-    - **`instant`**: Models loaded during application bootstrapping. This is the default strategy.
-    - **`lazy`**: Models loaded into memory only when hydrated. All instances of the model are loaded simultaneously. Example: `ExternalUser`.
-    - **`partial`**: Models loaded on demand, commonly used. Example: `DocumentContent`.
-    - **`explicitlyRequested`**: Models loaded only when explicitly requested. Example: `DocumentContentHistory`.
-    - **`local`**: Models persisted exclusively in the local database. No models were identified using this strategy.
-2. **`partialLoadMode`**: Determines how a model is hydrated, with three possible values: `full`, `regular`, and `lowPriority`.
-3. **`usedForPartialIndexes`**: Pertains to partial indexing functionality.
-
-In the next chapter, we will explore how this metadata influences the loading behavior of models.
+1. **`loadStrategy`**: Defines how models are loaded into the client. There are five strategies:
+   - **`instant`**: Models that are loaded during application bootstrapping (default strategy).
+   - **`lazy`**: Models that do not load during bootstrapping but are fetched all at once when needed (e.g., `ExternalUser`).
+   - **`partial`**: Models that are loaded on demand, meaning only a subset of instances is fetched from the server (e.g., `DocumentContent`).
+   - **`explicitlyRequested`**: Models that are only loaded when explicitly requested (e.g., `DocumentContentHistory`).
+   - **`local`**: Models that are stored exclusively in the local database. No models have been identified using this strategy.
+2. **`partialLoadMode`**: Specifies how a model is hydrated, with three possible values: `full`, `regular`, and `lowPriority`.
+3. **`usedForPartialIndexes`**: Relates to the functionality of partial indexing.
 
 ![](./imgs/count-of-models.png)
 
 _When I started writing this post, there were 76 models in Linear. As I am about to finish, there are 80 models._
 
 > [!NOTE]
-> **What is `local` used for in a sync engine like Linear Sync Engine?**  
+> What is `local` used for?
 >
-> During his presentation at Local First Conf, Tuomas explained how new features can be developed without modifying server-side code. This is accomplished by setting the load strategy to `local` for any new model, ensuring that it persists or boots only in the local IndexedDB. Once the model is finalized, syncing is enabled by changing its load strategy from `local` to one of the other strategies.
+> You might wonder what the `local` load strategy is used for, given that no models currently use it.
+> In his presentation at Local First Conf, Tuomas explained how new features can be developed without modifying server-side code. My guess is that this is achieved by initially setting a new model’s load strategy to `local`, ensuring it persists only in the local IndexedDB. Once the model is finalized, syncing can be enabled by changing its load strategy to one of the other available strategies.
 
 LSE uses **TypeScript decorators** to register metadata in `ModelRegistry`. The decorator responsible for registering models' metadata is `ClientModel` (also known as `We`).
 
@@ -171,8 +176,8 @@ class Issue extends Model {}
 
 In the implementation of `ClientModel`:
 
-1. The model’s name and constructor function are registered in `ModelRegistry`'s `modelLookup`.
-2. The model’s name, schema version, and property names are combined into a **hash value**, which is registered in `ModelRegistry` and used to check the database schema. If the model’s `loadStrategy` is `partial`, this information is also included in the hash.
+1. The model's name and constructor function are registered in `ModelRegistry`'s `modelLookup`.
+2. The model's name, schema version, and property names are combined into a **hash value**, which is registered in `ModelRegistry` and used to check the database schema. If the model's `loadStrategy` is `partial`, this information is also included in the hash.
 
 You can refer to the source code for more details about how `ClientModel` works.
 
@@ -181,49 +186,50 @@ You can refer to the source code for more details about how `ClientModel` works.
 > [!NOTE]
 > Code References
 >
-> - `vn`: `PropertyTypeEnum`
+> - `vn`: `PropertyTypeEnum` enumeration
 > - `w`: `Property` decorator
 > - `pe`: `Reference` decorator
 > - `A4`: `registerReference` helper function
 > - `rr.registerModel`: `ModelRegistry.registerModel`
 > - `rr.registerProperty`: `ModelRegistry.registerProperty`
 
-Each property has **property metadata**, with some key fields including:
+Models have properties that are implemented as JavaScript class properties. Each property is associated with property metadata, which includes key fields such as:
 
-1. **`type`**: Specifies the property’s type.
-2. **`lazy`**: Specifies whether the property should be loaded only when the model is hydrated.
-3. **`persistence`**: Indicates how the property should be stored in the database. Options include `none`, `createOnly`, `updateOnly`, and `createAndUpdate`.
-4. **`indexed`**: Determines whether the property should be indexed in the database.
-5. **`serializer`**: Defines how to serialize the property for data transfer or storage.
-6. **`referenceOptional`**: Its distinction from `referenceNullable` is unclear.
-7. **`referenceNullable`**: Its function is unknown.
-8. **`referencedClassResolver`**: A function that returns the constructor of the referenced model.
-9. **`referencedProperty`**: If the referenced model has a property that references back, this specifies the name of that property.
-10. **`cascadeHydration`**: Indicates whether referenced models should be hydrated in a cascading manner.
-11. **`onDelete`**: Defines how to handle the referenced model when the model is deleted. Options include `CASCADE`, `NO ACTION`, `SET NULL`, and `REMOVE AND CASCADE WHEN EMPTY`.
-12. **`onArchive`**: Specifies how to handle the referenced model when the model is archived.
+1. `type`: Specifies the property's type.
+2. `lazy`: Specifies whether the property should be loaded only when the model is hydrated.
+3. `serializer`: Defines how to serialize the property for data transfer or storage.
+4. `indexed`: Determines whether the property should be indexed in the database. Used for references.
+5. `nullable`: Specifies whether the property can be `null`, used for references.
+6. etc.
 
-There are **seven types of properties** (defined in the enumeration `vn`):
+`type` is an enumeration that includes the following values:
 
 1. **`property`**: A property that is "owned" by the model. For example, `title` is a `property` of `Issue`.
 2. **`ephemeralProperty`**: Similar to a `property`, but it is not persisted in the database. This type is rarely used. For example, `lastUserInteraction` is an ephemeral property of `User`.
 3. **`reference`**: A property used when a model holds a reference to another model. Its value is typically the ID of the referenced model. A reference can be lazy-loaded, meaning the referenced model is not loaded until this property is accessed. For example, `subscription` is a `reference` of `Team`.
-4. **`referenceModel`**: When `reference` or `backReference` properties are registered, a `referenceModel` property is also created. This property defines getters and setters to access the referenced model using the corresponding `reference` or `backReference`.
+4. **`referenceModel`**: When `reference` properties are registered, a `referenceModel` property is also created. This property defines getters and setters to access the referenced model using the corresponding `reference`.
 5. **`referenceCollection`**: Similar to `reference`, but it refers to an array of models. For example, `templates` is a `referenceCollection` of `Team`.
 6. **`backReference`**: A `backReference` is the inverse of a `reference`. For example, `favorite` is a `backReference` of `Issue`. The key difference is that a `backReference` is considered "owned" by the referenced model. When the referenced model (B) is deleted, the `backReference` (A) is also deleted.
 7. **`referenceArray`**: Used for many-to-many relationships. For example, `members` of `Project` is a `referenceArray` that references `Users`, allowing users to be members of multiple projects.
 
-LSE uses a variety of decorators to register different types of properties. In this chapter, let’s first look at three of them.
+LSE uses a variety of decorators to register different types of properties. In this chapter, let's first look at three of them.
 
-#### `Property` decorator (`w`)
+#### `Property` (`w`)
 
-Let’s take the `Issue` model as an example. `priority` and `title` are declared as  properties of type `property` of `Issue`:
+Let's take the `Issue` model as an example. `priority` and `title` are declared as properties of type `property` of `Issue`:
 
 ```tsx
 Pe([w()], re.prototype, "title", void 0);
-Pe([w({
-    serializer: P_
-})], re.prototype, "priority", void 0);
+Pe(
+  [
+    w({
+      serializer: P_,
+    }),
+  ],
+  re.prototype,
+  "priority",
+  void 0
+);
 ```
 
 The original source code may look like this:
@@ -241,7 +247,7 @@ class Issue extends Model {
 
 In the implementation of `Property`:
 
-1. The property is made observable by calling `M1`, which will be covered in the "Observability" section.
+1. The property is made observable by calling `M1`, which will be covered in the [Observability](#observability-m1) section.
 2. The property is registered in `ModelRegistry`.
 
 Please refer to the source code for more details.
@@ -251,10 +257,17 @@ Please refer to the source code for more details.
 For example, `assignee` is a `reference` of `Issue`, as each issue can be assigned to only one user. On the other hand, `assignedIssues` is a `LazyReferenceCollection` of `User`, as a user can have many assigned issues.
 
 ```tsx
-Pe([pe(()=>K, "assignedIssues", {
-    nullable: !0,
-    indexed: !0
-})], re.prototype, "assignee", void 0);
+Pe(
+  [
+    pe(() => K, "assignedIssues", {
+      nullable: !0,
+      indexed: !0,
+    }),
+  ],
+  re.prototype,
+  "assignee",
+  void 0
+);
 
 st([Nt()], K.prototype, "assignedIssues", void 0);
 ```
@@ -263,7 +276,7 @@ The original source code may look like this:
 
 ```tsx
 @ClientModel("Issue")
-class Issue {
+class Issue extends Model {
  @Reference(() => User, "assignedIssues", {
    nullable: true,
    indexed: true,
@@ -272,7 +285,7 @@ class Issue {
 }
 
 @ClientModel("User")
-class User {
+class User extends Model {
   @OneToMany()
   assignedIssues: LazyReferenceCollection;
 
@@ -284,11 +297,13 @@ class User {
 }
 ```
 
-In the implementation of the `Reference` decorator (more specifically, the `registerReference` `A4` function), two properties are actually registered in `ModelRegistry`: `assignee` and `assigneeId`.
+In the implementation of the `Reference` decorator (more specifically, the `registerReference` function), two properties are actually registered: `assignee` and `assigneeId`.
 
-1. They are of different types. `assignee` is of type `referenceModel`, while `assigneeId` is of type `reference`. The `assignee` property is not persisted in the database; only `assigneeId` is.
-2. LSE uses a getter and setter to link `assigneeId` and `assignee`. When the `assignee` value is set, `assigneeId` is updated with the new value's `ID`. Similarly, when `assignee` is accessed, the corresponding record is fetched from the data store using the `ID`.
-3. Additionally, `assigneeId` is made observable with `M1`.
+They are of different types. `assignee` is of type `referenceModel`, while `assigneeId` is of type `reference`. The `assignee` property is not persisted in the database; only `assigneeId` is.
+
+LSE uses a getter and setter to link `assigneeId` and `assignee`. When the `assignee` value is set, `assigneeId` is updated with the new value's `ID`. Similarly, when `assignee` is accessed, the corresponding record is fetched from the data store using the `ID`.
+
+Additionally, `assigneeId` is made observable with `M1`.
 
 ![model property lookup](./imgs/model-property-lookup.png)
 
@@ -296,10 +311,10 @@ _There are lots of `referenceModel` and `reference` pairs in the `ModelRegistry`
 
 ### Schema Hash
 
-`ModelRegistry` includes a special property called **`__schemaHash`**, which is a hash of all models' metadata and their properties' metadata. This hash is crucial for determining whether the local database requires migration, a topic covered in detail in a later chapter. I have already added comments in the source code explaining how it is calculated, so I won’t repeat that here.
+`ModelRegistry` includes a special property called **`__schemaHash`**, which is a hash of all models' metadata and their properties' metadata. This hash is crucial for determining whether the local database requires migration, a topic covered in detail in a later chapter. I have already added comments in the source code explaining how it is calculated, so I won't repeat that here.
 
 > [!INFO]
-> TypeScript Decorators  
+> TypeScript Decorators
 >
 > When TypeScript transpiles decorators, it processes property decorators before model decorators. As a result, property decorators are executed first. By the time `ModelRegistry.registerModel` is called, all properties of that model have already been registered, and their metadata will also be included in the `__schemaHash`.
 
@@ -316,38 +331,39 @@ It uses `Object.defineProperty` to define a getter and setter for the property t
 
 The same logic applies to the getter, which ensures that if the box exists, it retrieves the value from it. By wrapping React components with `observer`, MobX can track which components subscribe to the observables and automatically refresh them when the observable values change.
 
-Additionally, when setting the value, the `propertyChanged` method is called to register the property change, along with the old and new values. This information will later be used to create an `UpdateTransaction`, which we’ll discuss in a the third chapter.
+Additionally, when setting the value, the `propertyChanged` method is called to register the property change, along with the old and new values. This information will later be used to create an `UpdateTransaction`, which we'll discuss in a the third chapter.
 
 Check the source code for more details.
 
 ### Takeaway of Chapter 1
 
-Here’s a quick summary of what we’ve learned:
+Let's summarize the key points covered in this chapter:
 
-- Models and properties in LSE are governed by metadata that defines their behavior.
-- LSE leverages decorators to register various elements—models, properties, and references—within the `ModelRegistry`.
-- LSE uses `Object.defineProperty` to implement getters and setters, enabling reference handling and observability for properties, and thereby for models.
+- **Models and Properties in LSE**: Governed by metadata that defines their behavior.
+- **Model Definition**: LSE defines models using JavaScript classes and utilizes decorators to register models, properties, and references in the `ModelRegistry`.
+- **Load Strategies**: Models can be loaded using different strategies, including `instant`, `lazy`, `partial`, `explicitlyRequested`, and `local`.
+- **Property Types**: LSE categorizes properties into several types, such as `property`, `reference`, `referenceModel`, `referenceCollection`, `backReference`, and `referenceArray`.
+- **Reactive Data Handling**: LSE uses `Object.defineProperty` to implement getters and setters, enabling efficient reference handling and observability.
+
+In the upcoming chapters, we’ll explore how this metadata is leveraged in practice. Keep reading! 🚀
 
 ## Chapter 2: Bootstrapping & Lazy Loading
 
-Once the models are defined, it’s time to load them. In this chapter, we’ll explore how LSE bootstraps (loads multiple models in a batch) and lazily loads models.
+Once the models are defined, the next step is to **load them into the client**. In this chapter, we'll explore how LSE **bootstraps and lazily loads models**.
 
-We’ll begin with an overview to establish a foundational understanding before diving into the more intriguing details. Since this process involves multiple modules, I’ll also provide brief introductions to each one for better context.
+We’ll start with a high-level overview to establish a foundational understanding before diving into more intricate details. Since this process involves multiple modules, I’ll also provide brief introductions to each for better context.
 
-![LSE modules](./imgs/lse-modules.png)
+![bootstrapping overview](./imgs/bootstrapping-overview.png)
 
-// TODO: 以下这个列表的内容还需要再调整
-
-1. `StoreManager` (`cce`) creates either a `PartialStore` (`jm`) or a `FullStore` (`TE`) for each model. These stores are responsible for synchronizing in-memory data with IndexedDB.
-2. `Database` connects to IndexedDB and checks whether a migration is required.
+1. `StoreManager` (`cce`) creates either a `PartialStore` (`jm`) or a `FullStore` (`TE`) for each model. These stores are responsible for synchronizing in-memory data with IndexedDB. Also, `SyncActionStore` (`oce`) will be created to store sync actions.
+2. `Database` (`eg`) connects to IndexedDB and get databases and tables ready. If the databases don't exist, they will be created. And if a migration is needed, it will be performed.
 3. `Database` determines the type of bootstrapping to be performed.
-4. The appropriate bootstrapping is executed. For full bootstrapping, the model is retrieved from the server.
-5. The model data is stored in IndexedDB.
-6. Data requiring immediate hydration is loaded into memory, in-memory model objects are initialized, and observability is activated.
-7. For local bootstrapping, deltas are applied, persisted transactions are loaded, and object stores are flushed to save data into IndexedDB.
-8. Remote changes are monitored, and persisted transactions are scheduled for execution.
+4. The appropriate bootstrapping is executed. For full bootstrapping, models are retrieved from the server.
+5. The retrieved model data will be stored in IndexedDB.
+6. Data requiring immediate hydration is loaded into memory, and observability is activated.
+7. Build a connection to the server to receive delta packets.
 
-There are three types of bootstrapping in LSE: **full bootstrapping**, **partial bootstrapping**, and **local bootstrapping**. In this post, I’ll focus on providing a detailed explanation of **full bootstrapping**.
+There are three types of bootstrapping in LSE: **full bootstrapping**, **partial bootstrapping**, and **local bootstrapping**. In this post, I'll focus on providing a detailed explanation of **full bootstrapping**.
 
 ### Create `ObjectStore`s
 
@@ -357,7 +373,7 @@ There are three types of bootstrapping in LSE: **full bootstrapping**, **partial
 > - `cce`: `StoreManager`
 > - `p3`: `PartialStore`
 > - `TE`: `FullStore`
-> 
+>
 > The bootstrapping process begins with `km.startBootstrap` (`SyncedStore.startBootstrap`). `StoreManager` is lazily created through the getter `eg.storeManager` (`Database.storeManager`).
 
 The first step in the bootstrapping process is the construction of `StoreManager`. This module is responsible for creating and managing `ObjectStore` instances for each model registered in the `ModelRegistry`. Each `ObjectStore` handles the corresponding table for its model in IndexedDB.
@@ -381,6 +397,7 @@ Notably, for models with a `loadStrategy` of `partial`, an additional database n
 ### Create Databases & Tables in IndexedDB
 
 > [!NOTE] Code References
+>
 > - `eg.open`: `Database.open`
 > - `jn` or `Xn`: `DatabaseManager` - `databaseInfo`, `registerDatabase`, `database`
 > - `cce.checkReadinessOfStores`: `StoreManager.checkReadinessOfStores`
@@ -389,11 +406,10 @@ Notably, for models with a `loadStrategy` of `partial`, an additional database n
 After `ObjectStore`s are constructed, the next step is to prepare the database—creating the databases and tables if they don't already exist in IndexedDB.
 
 LSE maintains two types of databases in IndexedDB: `linear_databases` and others with names like `linear_(hash)`.
- 
+
 **`linear_databases`**: This database stores information about other databases. LSE creates a separate database for each logged-in user in a workspace. If the user is part of multiple workspaces, LSE creates a database for each logged-in workspace.
 
-<!-- TODO: 缺少一个展示 linear_databases 内容的截图 -->
-  
+![linear databases](./imgs/linear-databases.png)
 
 The database information includes:
 
@@ -411,21 +427,21 @@ The first table is **`_meta`**, which holds persistence details for each model, 
 
 ![](./imgs/meta-persistence.png)
 
-*Model persistence state.*
+_Model persistence state._
 
 Each model has a corresponding record in the `_meta` table. If the `persisted` field is set to `true`, it indicates that all instances of that model within the workspace have been loaded onto the client.
 
 ![](./imgs/meta-meta.png)
 
-*Database's metadata*
+_Database's metadata_
 
 The database's metadata fields includes:
 
-1. `lastSyncId`. 
+1. `lastSyncId`.
 
 ---
 
-**`lastSyncId`** is a critical concept in LSE, so allow me to introduce it here. You might find that it ties into concepts like transactions and delta packets, which we will explore in greater detail in the later chapters. It’s perfectly fine if you don’t fully grasp this part right now. Keep reading and refer back to this section after you've covered the upcoming chapters—everything will come together.
+**`lastSyncId`** is a critical concept in LSE, so allow me to introduce it here. You might find that it ties into concepts like transactions and delta packets, which we will explore in greater detail in the later chapters. It's perfectly fine if you don't fully grasp this part right now. Keep reading and refer back to this section after you've covered the upcoming chapters—everything will come together.
 
 Linear is often regarded as a benchmark for [local-first software](https://www.inkandswitch.com/local-first/). Unlike most mainstream local-first applications that use CRDTs, Linear's collaboration model aligns more closely with OT, as it relies on a centralized server to establish the order of all transactions. Within the LSE framework, all transactions sent by clients follow a [total order](https://en.wikipedia.org/wiki/Total_order), whereas CRDTs typically require only a [partial order](https://en.wikipedia.org/wiki/Partially_ordered_set). This total order is represented by the `lastSyncId`.
 
@@ -441,16 +457,16 @@ This broader scope can be observed in practice: even if a single transaction hap
 
 Clients use the **`lastSyncId`** to determine whether they are synchronized with the server. By comparing their local `lastSyncId` with the `lastSyncId` provided by the server, clients can identify if they are missing any transactions:
 
-- If the client’s `lastSyncId` is **smaller** than the server’s, it indicates that the client is out of sync and has not received some delta packets.
+- If the client's `lastSyncId` is **smaller** than the server's, it indicates that the client is out of sync and has not received some delta packets.
 - The server frequently includes the `lastSyncId` in its responses to help clients stay updated.
 
-The client’s `lastSyncId` is initially set during the **full bootstrapping process**, where it retrieves the latest state of the database. As the client receives **delta packets** from the server, the `lastSyncId` is updated to reflect the new synchronized state.
+The client's `lastSyncId` is initially set during the **full bootstrapping process**, where it retrieves the latest state of the database. As the client receives **delta packets** from the server, the `lastSyncId` is updated to reflect the new synchronized state.
 
 Now back to other fields of database's metadata.
 
 ---
 
-2. **`firstSyncId`**: Represents the `lastSyncId` value when the client performs a **full bootstrapping**. This marks the starting point for the client’s synchronization with the server.
+2. **`firstSyncId`**: Represents the `lastSyncId` value when the client performs a **full bootstrapping**. This marks the starting point for the client's synchronization with the server.
 3. **`backendDatabaseVersion`**: Indicates the version of the backend database. The name is self-explanatory and is used to track compatibility between the client and server databases.
 4. **`updatedAt`**: A timestamp indicating the last time the database or its metadata was updated. The name is straightforward.
 5. **`subscribedSyncGroups`**.
@@ -467,13 +483,13 @@ This concept is crucial in LSE. While all workspaces share the same `lastSyncId`
 
 ---
 
-The explanation above covered the `_meta` table. Now, let’s discuss the second special table: **`_transaction`**. This table stores unsent transactions or those queued for server synchronization. We’ll delve deeper into the details of transactions in the next chapter.
+The explanation above covered the `_meta` table. Now, let's discuss the second special table: **`_transaction`**. This table stores unsent transactions or those queued for server synchronization. We'll delve deeper into the details of transactions in the next chapter.
 
 ![](./imgs/cached-transactions.png)
 
-*Cached transactions*
+_Cached transactions_
 
-Let’s return to the bootstrapping process and explore how these two types of databases are created in IndexedDB. Please refer to `ng.initializeDatabase` (`SyncClient.initializeDatabase`) for source code and comments.
+Let's return to the bootstrapping process and explore how these two types of databases are created in IndexedDB. Please refer to `ng.initializeDatabase` (`SyncClient.initializeDatabase`) for source code and comments.
 
 **Step 1: Retrieve Workspace Metadata**
 
@@ -481,7 +497,7 @@ The process begins by retrieving the metadata for the workspace being bootstrapp
 
 **Step 2: Create the Workspace-Specific Database**
 
-Next, LSE prepares the workspace-specific database, such as `linear_b4782b3125a816b51a44e59f2e939efa`. It first establishes a connection to the database and evaluates whether it needs to be created or migrated. If creation or migration is required, the `StoreManager` invokes its `createStores` method (`this.storeManager.createStores(i, l)`) to initialize the necessary tables for the models. 
+Next, LSE prepares the workspace-specific database, such as `linear_b4782b3125a816b51a44e59f2e939efa`. It first establishes a connection to the database and evaluates whether it needs to be created or migrated. If creation or migration is required, the `StoreManager` invokes its `createStores` method (`this.storeManager.createStores(i, l)`) to initialize the necessary tables for the models.
 
 At this stage, LSE also attempts to read the database's metadata. However, during a full bootstrapping process, no metadata is stored yet, so all fields are initialized to `0` or other default values.
 
@@ -489,11 +505,12 @@ At this stage, LSE also attempts to read the database's metadata. However, durin
 
 The final stage involves verifying the readiness of each store. During the first load, as all tables are initially empty, so none of the stores will be ready.
 
-At this point, LSE has prepared the databases and is ready to load data from the server. Let’s dive deeper into how this process works.
+At this point, LSE has prepared the databases and is ready to load data from the server. Let's dive deeper into how this process works.
 
 ### Determine the Bootstrapping Type
 
 > [!NOTE] Code References
+>
 > - `ng.bootstrap`: `SyncClient.bootstrap`
 > - `eg.requiredBootstrap`: `Database.requiredBootstrap`
 
@@ -532,8 +549,8 @@ Additional fields in the `requiredBootstrap` 's return include:
 >
 > 1. `ng.bootstrap`: `SyncClient.boostrap`
 > 2. `eg.bootstrap`: `Database.bootstrap`
-> 4. `Xm.fullBootstrap`: `BootstrapHelper.fullBootstrap` 
-> 5. `sd.restModelsJsonStreamGen`: `GraphQLClient.restModelsJsonStreamGen`
+> 3. `Xm.fullBootstrap`: `BootstrapHelper.fullBootstrap`
+> 4. `sd.restModelsJsonStreamGen`: `GraphQLClient.restModelsJsonStreamGen`
 
 When LSE initiates a full bootstrapping process, it sends a request through the `GraphQLClient.restModelsJsonStreamGen` method. This function is responsible for retrieving models from the server and will be referenced multiple times throughout the remainder of this article.
 
@@ -560,7 +577,7 @@ And an example response would be like this:
 _metadata_={"method":"mongo","lastSyncId":2326713666,"subscribedSyncGroups":["89388c30-9823-4b14-8140-4e0650fbb9eb","4e8622c7-0a24-412d-bf38-156e073ab384","AD619ACC-AAAA-4D84-AD23-61DDCA8319A0","CDA201A7-AAAA-45C5-888B-3CE8B747D26B"],"databaseVersion":948,"returnedModelsCount":{"Activity":6,"Cycle":2,"DocumentContent":5,"Favorite":1,"GitAutomationState":3,"Integration":1,"Issue":3,"IssueLabel":4,"NotificationSubscription":2,"Organization":1,"Project":2,"ProjectStatus":5,"Team":1,"TeamKey":1,"TeamMembership":1,"User":1,"UserSettings":1,"WorkflowState":7,"Initiative":1,"SyncAction":0}}
 ```
 
-The response is a stream of JSON objects, with each line (except the last) representing the information of a model instance. For instance, here’s an object describing an `Issue` model:
+The response is a stream of JSON objects, with each line (except the last) representing the information of a model instance. For instance, here's an object describing an `Issue` model:
 
 ```json
 {
@@ -639,6 +656,7 @@ Finally, the retrieved models are written to their respective object stores, and
 ### Hydration and Object Pool
 
 > [!NOTE] Code References
+>
 > 1. `ng.bootstrap`: `SyncClient.bootstrap`.
 > 2. `eg.getAllInitialHydratedModelData`: `Database.getAllInitialHydratedModelData`.
 > 3. `ng.addModelToLiveCollections`: `SyncClient.addModelToLiveCollections`.
@@ -672,15 +690,15 @@ LSE does not load all data into memory during bootstrapping, regardless of the t
 
 Classes with a `hydrate` method can be hydrated, such as `Model`, `LazyReferenceCollection`, `LazyReference`, `RequestCollection`, and `LazyBackReference`, among others.
 
-Let’s start by examining the `hydrate` method of the `Model`. It checks all of its properties that need hydration and calls their respective `hydrate` methods. There are four types of properties that require hydration:
+Let's start by examining the `hydrate` method of the `Model`. It checks all of its properties that need hydration and calls their respective `hydrate` methods. There are four types of properties that require hydration:
 
 1. `LazyReferenceCollection`
 2. `LazyReference`
 3. `Reference` and `ReferenceCollection`, which are set to be hydrated alongside the model.
 
-We won’t dive too deep into the hydration of `Reference` and `ReferenceCollection`, as they simply call the `hydrate` method of other `Model` instances recursively. Instead, let’s focus on `LazyReferenceCollection` and `LazyReference`, as these are responsible for lazy hydration.
+We won't dive too deep into the hydration of `Reference` and `ReferenceCollection`, as they simply call the `hydrate` method of other `Model` instances recursively. Instead, let's focus on `LazyReferenceCollection` and `LazyReference`, as these are responsible for lazy hydration.
 
-Now, let’s discuss `LazyReferenceCollection`.
+Now, let's discuss `LazyReferenceCollection`.
 
 Earlier, when we discussed the definition of properties, we saw that `referenceCollection` is one of the seven types of properties. Now, let's dive deeper into this. The `OneToMany` (`Nt`) decorator is used for such properties. For instance, `comments` is a `LazyReferenceCollection` property of the `Issue` model. This decorator registers the property's metadata in the `ModelRegistry`.
 
@@ -705,7 +723,7 @@ class Issue extends BaseModel {
 ```
 
 > [!NOTE] Changes of decorators used here
-> After I began writing this post, the Linear team introduced a new approach that eliminates the need for developers to manually call the constructor of `LazyReferenceCollection`. In essence, they added more decorators similar to `OneToMany` that automatically construct `LazyReferenceCollection` with various options. Since this change doesn’t affect how lazy hydration works, I’ll omit it from this post for simplicity.
+> After I began writing this post, the Linear team introduced a new approach that eliminates the need for developers to manually call the constructor of `LazyReferenceCollection`. In essence, they added more decorators similar to `OneToMany` that automatically construct `LazyReferenceCollection` with various options. Since this change doesn't affect how lazy hydration works, I'll omit it from this post for simplicity.
 
 In the `hydrate` method of `LazyReferenceCollection`, the first to step is to call `this.getCoveringPartialIndexValues` to get partial index values. So what is a partial index?
 
@@ -725,13 +743,20 @@ In the `hydrate` method of `LazyReferenceCollection`, the first to step is to ca
 
 **Partial Index** plays a crucial role in LSE by addressing a key question: **How should we determine which models need to be lazy-loaded?** In other words, when querying lazy-loaded models, what **parameters should the query use**? If we have the model IDs, the answer is straightforward. However, in cases where LSE needs to load assigned `Issues` for a `User`, it may not have the `Issue` IDs readily available.
 
-Imagine you're designing Linear's database schema. To query `Issues` assigned to a `User`, you would include an `assigneeId` field and create an index on it. This concept is applied similarly in LSE’s frontend code. When defining the `Issue` model, a reference to the `User` model is created, and LSE automatically generates an index for that field.
+Imagine you're designing Linear's database schema. To query `Issues` assigned to a `User`, you would include an `assigneeId` field and create an index on it. This concept is applied similarly in LSE's frontend code. When defining the `Issue` model, a reference to the `User` model is created, and LSE automatically generates an index for that field.
 
 ```typescript
-Pe([pe(()=>K, "assignedIssues", {
-    nullable: !0,
-    indexed: !0
-})], re.prototype, "assignee", void 0);
+Pe(
+  [
+    pe(() => K, "assignedIssues", {
+      nullable: !0,
+      indexed: !0,
+    }),
+  ],
+  re.prototype,
+  "assignee",
+  void 0
+);
 ```
 
 The original source code may look like this:
@@ -739,9 +764,9 @@ The original source code may look like this:
 ```typescript
 @ClientModel("Issue")
 class Issue extends Model {
-  @Reference(() => User, "assginee", {
+  @Reference(() => User, "assignee", {
     nullable: true,
-    indexed: true
+    indexed: true,
   })
   public assignee: User | null;
 }
@@ -764,9 +789,15 @@ The original source code may look like this:
 @ClientModel("User")
 class User extends Model {
   @OneToMany()
-  public assignedIssues = new LazyReferenceCollection(Issue, this, "assigneeId", undefiend, {
-    canSkipNetworkHydration: () => this.canSkipNetworkHydration(Issue)
-  });
+  public assignedIssues = new LazyReferenceCollection(
+    Issue,
+    this,
+    "assigneeId",
+    undefined,
+    {
+      canSkipNetworkHydration: () => this.canSkipNetworkHydration(Issue),
+    }
+  );
 }
 ```
 
@@ -846,7 +877,7 @@ In method `BatchModelLoader.handleBatch`, Linear divides requests into 3 categor
 2. Requests that are associated a `SyncGroup`.
 3. Requests that are either associated with an `indexedKey` nor `SyncGroup`.
 
-LSE uses different methods for different categories of requests, respectively  `loadSyncBatch` `loadPartialModels` and `loadFullModels`.
+LSE uses different methods for different categories of requests, respectively `loadSyncBatch` `loadPartialModels` and `loadFullModels`.
 
 In `loadSyncBatch`, it will call `GraphQLClient.resetModelsJsonStream` to send a request to `https://client-api.linear.app/sync/batch`. The request body will be like:
 
@@ -925,12 +956,11 @@ Let's sum up what we've learned in chapter 2:
 - LSE uses `lastSyncId` to determine the sequence of transactions and help clients to find out if it misses incremental updates from the server.
 - LSE can lazily hydrate models into memory from the server or the local database.
 
-
 ## Chapter 3: Transactions
 
-In the previous chapter, we explored how LSE loads existing models from the server. Now, we’ll shift our focus to how LSE synchronizes changes between clients and the server. Specifically, this chapter will cover how client-side changes are synced to the server.
+In the previous chapter, we explored how LSE loads existing models from the server. Now, we'll shift our focus to how LSE synchronizes changes between clients and the server. Specifically, this chapter will cover how client-side changes are synced to the server.
 
-Let’s start with a fundamental question: **What happens when we change the assignee of an Issue?** How does LSE manage networking, error handling, offline caching, and other underlying complexities—all within just two lines of code?
+Let's start with a fundamental question: **What happens when we change the assignee of an Issue?** How does LSE manage networking, error handling, offline caching, and other underlying complexities—all within just two lines of code?
 
 ```jsx
 issue.assignee = user;
@@ -939,14 +969,14 @@ issue.save();
 
 ![](./imgs/transaction-overview.png)
 
-Let’s start by getting a high-level overview of the process before diving into the details in the sections below.
+Let's start by getting a high-level overview of the process before diving into the details in the sections below.
 
 72. **Property Assignment and Immediate Updates**  
     When a property is assigned a new value, the system records three key pieces of information:
     - The name of the changed property
     - The new value
     - The old value
-    **Models in memory** are updated **immediately** to reflect these changes.
+      **Models in memory** are updated **immediately** to reflect these changes.
 73. **Generating an `UpdateTransaction`**  
     When `issue.save()` is called, an `UpdateTransaction` is created. This transaction is based on the properties that have been modified.
 74. **Queueing and Storing Transactions**  
@@ -965,25 +995,20 @@ Let’s start by getting a high-level overview of the process before diving into
 
 > [!note]  
 > **Code References**
-> 
+>
 > - `M1`: The decorator used to add observability to LSE models.
->     
 > - `as.propertyChanged`: `ClientModel.propertyChanged`
->     
 > - `as.markPropertyChanged`: `ClientModel.markPropertyChanged`
->     
 > - `as.referencedPropertyChanged`: `ClientModel.referencedPropertyChanged`
->     
 > - `as.updateReferencedModel`: `ClientModel.updateReferencedModel`
->     
 
-As discussed in the [Observability](https://chat.deepseek.com/a/chat/s/fd61116c-cfd9-4043-b25e-8fdc7900b48b#observability-\(m1\)) section, LSE leverages the `M1` function to make model properties observable. Beyond enabling observability, `M1` also plays a pivotal role in transaction generation.
+As discussed in the [Observability](<https://chat.deepseek.com/a/chat/s/fd61116c-cfd9-4043-b25e-8fdc7900b48b#observability-(m1)>) section, LSE leverages the `M1` function to make model properties observable. Beyond enabling observability, `M1` also plays a pivotal role in transaction generation.
 
-Here’s how it works:
+Here's how it works:
 
 When a property of a model is assigned a new value, the setter intercepts the assignment and triggers `propertyChanged`. This function records:
 
-- The name of the property    
+- The name of the property
 - The new value
 - The old value
 
@@ -991,16 +1016,16 @@ Next, `markPropertyChanged` is called to serialize the **old value** and sto
 
 ![](./imgs/modified-properties)
 
-Before `save()` is called, the **model in memory has already been updated**! Transactions are **not** responsible for updating in-memory models—this happens immediately when a property is changed. However, transactions do play a role in **undo** and **redo** operations and updateing in-memory models. We’ll dive deeper into this topic in **Chapter 5**.
+Before `save()` is called, the **model in memory has already been updated**! Transactions are **not** responsible for updating in-memory models—this happens immediately when a property is changed. However, transactions do play a role in **undo** and **redo** operations and updateing in-memory models. We'll dive deeper into this topic in **Chapter 5**.
 
 ### Generating an `UpdateTransaction`
 
 > [!note] Code References
-> - `as.save`: `ClientModel.save`
->- `sg.save`: `SyncedStore.save`
->- `ng.update`: `SyncClient.update`
->- `uce.update`: `TransactionQueue.update`
 >
+> - `as.save`: `ClientModel.save`
+> - `sg.save`: `SyncedStore.save`
+> - `ng.update`: `SyncClient.update`
+> - `uce.update`: `TransactionQueue.update`
 
 Chains of calling in this section:
 
@@ -1010,12 +1035,12 @@ as.save
     -> ng.update
 ```
 
-If the model exists in the Object Pool, an `UpdateTransaction` will be generated. During the construction of `UpdateTransaction`, the model's `changeSnapshot` function will be called. Ultimately, an object is generated to represent the changes and bound to `changeSnapshot` property of `UpdateTransaction`. 
+If the model exists in the Object Pool, an `UpdateTransaction` will be generated. During the construction of `UpdateTransaction`, the model's `changeSnapshot` function will be called. Ultimately, an object is generated to represent the changes and bound to `changeSnapshot` property of `UpdateTransaction`.
 
 <!-- TODO: add a snapshot to demonstrate what the object will look like. -->
 
 ```json
-{ 
+{
   "assigneeId" {
     "original": null,
     "unoptimizedUpdated": undefined,
@@ -1026,9 +1051,10 @@ If the model exists in the Object Pool, an `UpdateTransaction` will be generated
 ```
 
 An `UpdateTransaction` has the following properties:
+
 - `retries`: indicates how many times the client has tried to send the transaction to the server;
 - `type`: type of transaction.
-- `model`: the in-memory model object this transaction is related to 
+- `model`: the in-memory model object this transaction is related to
 - `batchIndex`: each transaction has a `batchIndex`. Transactions that have the same `batchIndex` will be sent to the server in batch.
 
 Besides `UpdatingTransaction`, there are 4 kinds of transactions and `TransactionQueue` provides corresponding methods to construct them. But in this post, let's focus on `UpdatingTransaction` solely.
@@ -1049,7 +1075,7 @@ Besides `UpdatingTransaction`, there are 4 kinds of transactions and `Transactio
 
 78. `createdTransactions`: When a transaction is queued, it firstly goes to `createdTransactions`. A `commitCreatedTransactions` scheduler periodically moves all transactions in this array to the end of `queuedTransactions`.
 79. `queuedTransactions`: These transactions are waiting to be executed. Transactions will be saved into `__transactions` local database when are are move to `queuedTransactions`. If there the client disconnects from the Internet, or the application get closed before the transactions in `queuedTransactions` are send, the client can load these transactions from `__transactions` store and retry the next time the client reconnect to the Internet.
-80. `executingTransactions`: These transactions have been sent to the server but have not been accepted (nor rejected) yet. 
+80. `executingTransactions`: These transactions have been sent to the server but have not been accepted (nor rejected) yet.
 81. `persistedTransactionsEnqueue`. When the database bootstraps, transactions saved in `__transactions` would be loaded into this array. After remote updates have been processed, they are moved to `queueTransactions` and waiting to be executed.
 
 There are another special array `completedButUnsyncedTransactions`. I will explain how it works when we talking about rebasing transactions.
@@ -1057,6 +1083,7 @@ There are another special array `completedButUnsyncedTransactions`. I will expla
 ### Executing transactions
 
 > [!NOTE] Code References
+>
 > - `uce.dequeueNextTransactions`: `TransactionQueue.dequeueNextTransactions`
 > - `zu.graphQLMutation`
 > - `as.updateMutation`:
@@ -1084,8 +1111,8 @@ Prepared transactions will later be executed in a batch by `executeTransactionBa
 
 ```json
 {
-  "query": "mutation IssueUpdate($issueUpdateInput: IssueUpdateInput!) { 
-    issueUpdate(id: \"a3dad63b-8302-4f1f-a874-a80e6d9ed418\", input: $issueUpdateInput) { lastSyncId } 
+  "query": "mutation IssueUpdate($issueUpdateInput: IssueUpdateInput!) {
+    issueUpdate(id: \"a3dad63b-8302-4f1f-a874-a80e6d9ed418\", input: $issueUpdateInput) { lastSyncId }
   }",
   "variables": {
     "issueUpdateInput": {
@@ -1115,7 +1142,7 @@ So, when the transactions are succesfully executed, if the `lastSyncId` is large
 
 ### Complete transactions
 
-%% TODO:  介绍一下在请求返回之后会咋样 %%
+%% TODO: 介绍一下在请求返回之后会咋样 %%
 
 ### Takeaway of Chapter 3
 
@@ -1134,10 +1161,11 @@ In this chapter, we will look into how LSE handles incremental udpates and keep 
 ### Establish Connection
 
 > [!NOTE] Code References
+>
 > - `ng.startSyncing`: `SyncClient.startSyncing`
 > - `ng.constructor`: `SyncClient.constructor`
 
-The last phrase of bootstrapping is connecting to the server using WebSocket for receiving incremental updates.  In the `handshakeCallback` witch will be executed after the connection is established, the client will compare `lastSyncId` in the callback's parameters with local `lastSyncId` to see if the client misses incremental changes. If so, it will fetch missing delta packets from the server and then apply them. 
+The last phrase of bootstrapping is connecting to the server using WebSocket for receiving incremental updates. In the `handshakeCallback` witch will be executed after the connection is established, the client will compare `lastSyncId` in the callback's parameters with local `lastSyncId` to see if the client misses incremental changes. If so, it will fetch missing delta packets from the server and then apply them.
 
 The parameters of the callback would be something like this:
 
@@ -1172,13 +1200,14 @@ Also, the `SyncClient` module listens the `SyncMessage` channel of the WebSocket
 ### Applying Deltas
 
 > [!NOTE] Code References
+>
 > - `ng.applyDelta`: `SyncClient.applyDelta`
 > - `ng.constructor`: `SyncClient.constructor`
-> - `oce.addSyncPacket`: `SyncActionStore.addSyncPacket` 
+> - `oce.addSyncPacket`: `SyncActionStore.addSyncPacket`
 > - `zu.supportedPacket`: `DependentsLoader.supportedPacket`
 > - `uce.modelUpserted`: `TransactionQueue.modelUpserted`
 
-After a client sends a GraphQL mutating query to the server, the server will execute that query and generate a group of delta packets, and then broadcast them to all connected clients (including the one who sends the transaction). 
+After a client sends a GraphQL mutating query to the server, the server will execute that query and generate a group of delta packets, and then broadcast them to all connected clients (including the one who sends the transaction).
 
 Each delta packet contain changes (described by the class `SyncAction`) happened on the server. For example, if the assignee of an `Issue` is changed, a client will receive delta packets like this:
 
@@ -1265,7 +1294,7 @@ Actions have `action` type. All possible types are:
 `ng.applyDelta` is responsible for handling these sync actions. It does the following things (refer to the source for implementation details):
 
 90. **Figure out if the user is added to or removed from sync groups**. If the user is added to a sync group, LSE will send a network request (indeed a partial bootstrapping) for models of that sync group. LSE will wait for the response before continue processing the sync actions.
-91. Load dependents of these actions. 
+91. Load dependents of these actions.
 
 ---
 
@@ -1282,11 +1311,9 @@ In this step, LSE will call `TransactionQueue.modelUpserted` to remove local `Cr
 
 ---
 
-In fact, in this step, LSE loops sync actions twice. 
+In fact, in this step, LSE loops sync actions twice.
 
-The first loop will prepare models to perform the sync actions. 
-95. For actions whose types are "I" "V" or "U", LSE creates corresponding model instances.
-96. For actions whose types are "A", LSE updates the models' properties.
+The first loop will prepare models to perform the sync actions. 95. For actions whose types are "I" "V" or "U", LSE creates corresponding model instances. 96. For actions whose types are "A", LSE updates the models' properties.
 
 And then LSE will attach references for newly created models. But before that, LSE will first check if the newly created model are deleted by sync action in the same delta packet to avoid performing unnecessary works. It achieves that by comparing the `syncId`s of the action creating the model and the action deleting this model. If deleting action's `syncId` is larger, the model shall not be created.
 
@@ -1295,13 +1322,14 @@ The second loop will handle sync actions one by one.
 For actions of type "I", "V", "U" and "C", LSE will **rebase** `UpdateTransactions` onto them.
 
 > [!NOTE] Code References
+>
 > - `ng.applyDelta`: `SyncClient.applyDelta`
 > - `uce.rebaseTransactions`: `SyncActionStore.addSyncPacket`
 > - `zu.rebase`: `UpdateTransaction.rebase`
 
-When applying a sync action, conflicts can arise with local transactions. For example, imagine your colleague changes the assignee to Alice, while you simultaneously change the assignee to Bob. The server processes your colleague’s update first, so according to the "last-writer-wins" principle, the assignee on the server ends up as Bob.
+When applying a sync action, conflicts can arise with local transactions. For example, imagine your colleague changes the assignee to Alice, while you simultaneously change the assignee to Bob. The server processes your colleague's update first, so according to the "last-writer-wins" principle, the assignee on the server ends up as Bob.
 
-Here’s what happens on your client: you create an `UpdateTransaction` to change the assignee, but before this transaction is executed by the server, your client receives a delta packet, updating the assignee to Alice. At this point, LSE needs to perform a rebasing, because, following the "last-writer-wins" principle, the in-memory model needs to be reverted back to Bob.
+Here's what happens on your client: you create an `UpdateTransaction` to change the assignee, but before this transaction is executed by the server, your client receives a delta packet, updating the assignee to Alice. At this point, LSE needs to perform a rebasing, because, following the "last-writer-wins" principle, the in-memory model needs to be reverted back to Bob.
 
 This rebasing occurs in the `rebaseTransactions` method, where all `UpdateTransaction` objects in the queue call the `rebase` method. The `original` value of each transaction is updated to reflect the value from the delta packet (in this case, Alice), and the in-memory model is reset to Bob. Fairly speaking, it is very similar to OT!
 
@@ -1316,15 +1344,13 @@ this.syncWaitQueue.progressQueue(this.lastSyncId), // If some transactions are w
 
 #### Server-side business logic
 
-If we take a closer look at the `UpdateTransaction` and the corresponding delta packets, it’s clear that the delta packets carry more data than the transaction itself—specifically, an `IssueHistory` of the assignee change. Unlike OT, where the server mainly handles operation transformations, validates permissions, and executes operations to maintain a single source of truth, LSE’s backend involves a lot of business logic in addition to these tasks.
+If we take a closer look at the `UpdateTransaction` and the corresponding delta packets, it's clear that the delta packets carry more data than the transaction itself—specifically, an `IssueHistory` of the assignee change. Unlike OT, where the server mainly handles operation transformations, validates permissions, and executes operations to maintain a single source of truth, LSE's backend involves a lot of business logic in addition to these tasks.
 
 ### How to Know If The Client is Missing Delta Packets?
 
 That is an important question! And should the delta packet's of the same sync groups should be applied in a sequence?
 
 ### Takeaway of Chapter 4
-
-
 
 ## Chapter 5: Misc
 
@@ -1337,9 +1363,9 @@ That is an important question! And should the delta packet's of the same sync gr
 > - `jce.addOperation`: `UndoQueue.addOperation`
 > - `jce.undo`: `UndoQueue.undo`
 
-Undos and redos in LSE are based on transactions. Each transaction type includes a specific `undoTransaction` method, which executes the undo logic and returns another transaction for redo purposes. For example, the `undoTransaction` method of an `UpdateTransaction` reverts the model's property to its previous value and returns another `UpdateTransaction` to the `UndoQueue`. It’s important to note that when a transaction executes its undo logic, a new transaction is created and added to the `queuedTransactions` to ensure proper synchronization.
+Undos and redos in LSE are based on transactions. Each transaction type includes a specific `undoTransaction` method, which executes the undo logic and returns another transaction for redo purposes. For example, the `undoTransaction` method of an `UpdateTransaction` reverts the model's property to its previous value and returns another `UpdateTransaction` to the `UndoQueue`. It's important to note that when a transaction executes its undo logic, a new transaction is created and added to the `queuedTransactions` to ensure proper synchronization.
 
-But how does the `UndoManager` determine which transactions should be appended to the undo/redo stack? The answer lies in Linear’s UI logic, which is responsible for identifying differences.
+But how does the `UndoManager` determine which transactions should be appended to the undo/redo stack? The answer lies in Linear's UI logic, which is responsible for identifying differences.
 
 ```jsx
 n.title !== d &&
@@ -1366,8 +1392,6 @@ This raises an interesting question: while a transaction can perform "undo" and 
 
 ### Permissions
 
-
-
 ## Conclusion
 
 %% TODO 为什么在这里提到了 SyncActionStore? %%
@@ -1376,8 +1400,7 @@ _Here it becomes clear that SyncActionStore plays an important of role of syncin
 
 SyncActionStore 实际上存储了所有被删除以及 removal 的数据的记录。
 
-
-No pagination? 
+No pagination?
 
 Other types of transactions.
 TransientRemoval
@@ -1410,6 +1433,7 @@ TransientRemoval
 | The base class that each model will inherit. The class declares a `store` and `__mobx` . The are the critical parts of data fetching and observability. |                                                                             |                                                                                                                                                                                |
 | The class provides lots of static methods to register models, properties and their metadata.                                                            |                                                                             |                                                                                                                                                                                |
 | `Qc`                                                                                                                                                    | `UUID`                                                                      | A helper function to generate UUID.                                                                                                                                            |
+
 ## Appendix B: Actions and Computed Values
 
 Actions (`rt`) & Computed (`O`)
@@ -1438,3 +1462,12 @@ class Issue {
 **Action** and **computed** are core MobX primitives. During bootstrapping, these properties are made observable by directly calling MobX's `makeObservable` API.
 
 ## Appendix C: What's not covered in this post?
+
+3. **`persistence`**: Indicates how the property should be stored in the database. Options include `none`, `createOnly`, `updateOnly`, and `createAndUpdate`.
+4. **`referenceOptional`**: Its distinction from `referenceNullable` is unclear.
+5. **`referenceNullable`**: Its function is unknown.
+6. **`referencedClassResolver`**: A function that returns the constructor of the referenced model.
+7. **`referencedProperty`**: If the referenced model has a property that references back, this specifies the name of that property.
+8. **`cascadeHydration`**: Indicates whether referenced models should be hydrated in a cascading manner.
+9. **`onDelete`**: Defines how to handle the referenced model when the model is deleted. Options include `CASCADE`, `NO ACTION`, `SET NULL`, and `REMOVE AND CASCADE WHEN EMPTY`.
+10. **`onArchive`**: Specifies how to handle the referenced model when the model is archived.
