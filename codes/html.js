@@ -8550,7 +8550,7 @@ const as = class as { // Model class
         return Object.keys(this.modifiedProperties)
     }
     updateMutation(e, n, r={}) {
-        // TODO: what is this e? It is a Set of what?
+        // e is a Set
         // n for an array of change descriptors. e.g.
         // [{ 
         //   "assigneeId" {
@@ -8595,12 +8595,15 @@ const as = class as { // Model class
     deleteMutation() {
         return `${Zl(this.modelName)}Delete(id: "${this.id}") { lastSyncId }`
     }
-    markPropertyChanged(e, n) { // e for the name of the changed property, n for the new value
+    markPropertyChanged(e, n) { 
+        // e for the name of the changed property, 
+        // n for the old value
         const r = this.properties[e];
         if ((r.persistance === ee.updateOnly || r.persistance === ee.createAndUpdate) && !(e in this.modifiedProperties) && !this.ignoreUpdates) {
+            const s = this.serializedValue(e, n) // serilaized old value
+              , i = this.serializedValue(e, this[e]); // seralized new value
             // Check if the value really changes by comparing the serialized values.
-            const s = this.serializedValue(e, n) // new value serilaized
-              , i = this.serializedValue(e, this[e]); // old value serialized
+            // Add register the changed property's name and the old value to modifiedProperties
             s !== i && (this.modifiedProperties[e] = s)
         }
     }
@@ -8906,9 +8909,13 @@ const as = class as { // Model class
     isInstanceOf(e) {
         return this instanceof e
     }
-    propertyChanged(e, n, r) { // `e` for changed property, `r` for new value, `n` for old value
+    propertyChanged(e, n, r) { 
+        // `e` for the changed property's name, 
+        // `n` for the old value
+        // `r` for the new value
         const s = this.properties[e];
         if (s) {
+            // You can ignore this if branch
             if (s.type === vn.ephemeralProperty) {
                 const i = r === void 0 ? null : r;
                 this.ignoreUpdates || (this.ephemeralUpdates ? this.ephemeralUpdates[e] = i : (this.ephemeralUpdates = {
@@ -32956,8 +32963,8 @@ function M1(t, e, n, r) { // function observability helper
             return this.__mobx[a] && (this.__mobx[i] !== void 0 && (this.__mobx[i] = this.__mobx[a].deserialize(this.__mobx[i])),
             delete this[a]),
             // The minified code seems difficult to understand. But you only need to
-            // pay attention to ut.box here. If the model is observable, M1 would create a MobX box on the property,
-            // e.g. `assigneedId`, to make the property observable.
+            // pay attention to ut.box here. If the model is observable, M1 would create 
+            // a MobX box on the property, e.g. `assigneedId`, to make the property observable.
             this.madeObservable ? (this.__mobx[s] || (this.__mobx[s] = ut.box(this.__mobx[i], {
                 deep: n
             }),
@@ -32975,8 +32982,9 @@ function M1(t, e, n, r) { // function observability helper
                 this.__mobx[s] = ut.box(o, {
                     deep: n
                 }), 
-                // This method is called to bookkeepping what property has been changed, what is the old value and what
-                // is the new value. This is critical to construct an UpdateTransaction.
+                // ### Figuring out what has been changed
+                // propertyChanged method is called to bookkeepping what property has been changed, what the old value is.
+                // This is critical to construct an UpdateTransaction.
                 this.propertyChanged(e, this.__mobx[i], o),
                 delete this.__mobx[i]; 
             else {
@@ -80615,12 +80623,13 @@ const M3 = class M3 { // BaseTransaction
         this.rollback()
     }
     independentOf(e) {
+        // Two transactions modifies different models, and these two models should not have bidirectional references.
         return this.model.id === e.model.id ? !1 : !this.model.references(e.model) && !e.model.references(this.model)
     }
     static setNextId(e) {
         this.nextId = e
     }
-    async transactionCompleted(e, n=0) { 
+    async transactionCompleted(e, n=0) { // Call this method to complete a transaction.
         // e for error, it could be undefined
         // n for lastSyncId
         this.syncIdNeededForCompletion = n,
@@ -80636,7 +80645,7 @@ const M3 = class M3 { // BaseTransaction
         this.resolve(1)
     }
     prepare(e) {
-        const n = this.graphQLMutation(e); // generate graphQL query mutation
+        const n = this.graphQLMutation(e); // Generate graphQL query mutation.
         if (!n)
             return;
         const r = this;
@@ -80874,20 +80883,22 @@ class dce { // Transaction executor. Execute many transactions in a batch.
                 // IssueUpdates_UserUpdate
                 r = Object.keys(d).map(u=>u + (d[u] > 1 ? "s" : "")).join("_")
             }
-            // Join variable types.
+            // Combine graphQLMutationPrepared of every transaction.
             const s = this.transactions.flatMap(d=>Object.entries(d.graphQLMutationPrepared.variableTypes || {}).map(([u,h])=>`$${u}: ${h}!`)).join(", ")
               , i = this.transactions.reduce((d,u)=>({
                 ...d,
                 ...u.graphQLMutationPrepared.variables
             }), {})
               , a = `mutation ${r}${s ? `(${s})` : ""} { ${this.transactions.map((d,u)=>(n ? "" : `o${u + 1}:`) + (typeof d == "string" ? d : d.graphQLMutationPrepared.mutationText)).join(", ")} }`
-              , o = await this.graphQLClient.mutate(a, i, { // Send the request to the server
+            // And send the request to the server.
+            // An example is shown in the article.
+              , o = await this.graphQLClient.mutate(a, i, {
                 logUserErrors: !0
             })
-                // Get the max lastSyncId
+                // Get the max lastSyncId.
               , l = Object.keys(o).reduce((d,u)=>Math.max(d, o[u].lastSyncId), 0);
-            for (const d of this.transactions) // Resolve call transaction.
-                d.transactionCompleted(void 0, l);
+            for (const d of this.transactions) // Complete all transactions.
+                d.transactionCompleted(void 0, l); // The lastSyncId will be syncIdNeededForCompletion property of that transaction.
             this.resolve()
         } catch (n) {
             const r = P1(n) ? n : void 0
@@ -81063,13 +81074,12 @@ class uce { // class TranscactionQueue
         this.createdTransactions = [], // Contains newly created transactions.
         this.queuedTransactions = [], // Contains transactions that will be sent to the server in the next tick.
         this.executingTransactions = [], // Contains transcations that have been sent to the server and waiting for a response.
-        this.completedButUnsyncedTransactions = [], // Contains transactions that have been accepted by the server
-        // but can not be treated as synced.
+        this.completedButUnsyncedTransactions = [], // Contains transactions that have been accepted by the server but can not be treated as synced.
         this._onTransactionCountChange = new Tt,
         this._onTransactionQueued = new Tt,
         this.dequeueTransaction = new ww,
-        this.batchIndex = 0, // LSE may send several transactions in a batch, this batchIndex is for the batches sequence.
-        this.commitCreatedTransactions = new ww,
+        this.batchIndex = 0, // LSE may send several transactions in a batch.
+        this.commitCreatedTransactions = new ww, // The scheduler group several transactions in a batch.
         this.handleTimedRecheck = ()=>{
             this.dequeueNextTransactions()
         }
@@ -81127,7 +81137,9 @@ class uce { // class TranscactionQueue
         }
     }
     // Transactions that will 
-    rebaseTransactions(e, n) { // `e` for the model to rebase, `n` for the lastsyncid to be rebased on
+    rebaseTransactions(e, n) { 
+        // `e` for the model to rebase
+        // `n` for the lastsyncid to be rebased on
         var r;
         if (this.lastSyncId = n, // Update lastSyncId of TransactionQueue 
             // Filter transcations in completedButUnsyncedTransactions. Whose `syncIdNeededForCompletion` is less or equal to the current lastSyncId will be filtered out.
@@ -81253,11 +81265,12 @@ class uce { // class TranscactionQueue
         }
         this.createdTransactions.push(e),
         this._onTransactionQueued.fire(e),
-        this.commitCreatedTransactions.schedule(async()=>{
+        this.commitCreatedTransactions.schedule(async()=>{ // This is a simple microtask scheduler, so 
+            // transactions generated synchrounously will be in the same batch.
             this.batchIndex++;
             const n = this.createdTransactions.concat();
             this.createdTransactions = [], // Empty created transactions.
-            await this.database.putTransactions(n), // Save all queue transactions into database (offline cache)
+            await this.database.putTransactions(n), // Save all queue transactions into database (offline cache).
             this.queuedTransactions.push(...n), // Push createdTransactions to queuedTransactions
             this.outstandingTransactionCountChanged(),
             this.dequeueNextTransactions() // Schedule the next query.
@@ -81266,18 +81279,20 @@ class uce { // class TranscactionQueue
     }
     dequeueNextTransactions() {
         this.dequeueTransaction.schedule(()=>{
-            // If there are no queued transacation or more than 40 transcation are executing,
-            // skip this.
+            // If there are no queued transacation or more than 40 transcations are executing,
+            // skip this scheduling.
             if (this.queuedTransactions.length === 0 || this.executingTransactions.length >= kw) // kw === 40
                 return;
             let e = 0; // Limit a batch's size.
             const n = this.queuedTransactions[0].batchIndex
               , r = []
               , s = new Set;
+            
+            // This loop moves transactions from queuedTransactions to executingTransactions
             for (; e < xw 
                 && this.queuedTransactions.length > 0 
-                && r.length < kw // 40
-                && this.queuedTransactions[0].batchIndex === n // Transactions belong to the same batch
+                && r.length < kw // 40. 
+                && this.queuedTransactions[0].batchIndex === n // Transactions that have the same batchIndex.
                 && this.transactionIsIndependentOfRunningTransactions(this.queuedTransactions[0]); 
             ) {
                 const i = this.queuedTransactions[0];
@@ -81285,7 +81300,7 @@ class uce { // class TranscactionQueue
                     break;
                 let a, o;
                 try {
-                    a = i.prepare(s) // Prepare that transaction, generating GraphQL query
+                    a = i.prepare(s) // Prepare that transaction, generating GraphQL query.
                 } catch (d) {
                     F.error("Error preparing transaction", d, {
                         transaction: {
@@ -81300,14 +81315,17 @@ class uce { // class TranscactionQueue
                         userError: !1
                     })
                 }
-                if (!a) { // If there's no transaction, LSE will just omit that transaction.
+                if (!a) {
+                    // If after preparation, these is no need to execute this transaction,
+                    // immeidately complete this transaction.
                     i.transactionCompleted(o),
                     this.database.deleteTransaction(i.id),
                     this.queuedTransactions.shift();
                     continue
                 }
-                const l = Zo.graphQLMutationSize(a.graphQLMutationPrepared) ?? 0;
-                if (e > 0 && e + l > xw)
+                const l = Zo.graphQLMutationSize(a.graphQLMutationPrepared) ?? 0; // Get size of the graph mutation for this transaction.
+                if (e > 0 && e + l > xw) // If the graph mutation's size exceeds the limit, do not add this transaction to next batch.
+                    // xw === 9e6
                     break;
                 for (const d of Object.keys(a.graphQLMutationPrepared.variables || {}))
                     s.add(d); // Add key to the Set. For example "issueUpdateInput"
@@ -81336,17 +81354,24 @@ class uce { // class TranscactionQueue
         if (e.length !== 0) {
             this.executingTransactions = this.executingTransactions.concat(e);
             try {
-                if (await new dce(e,this.graphQLClient).execute() === Ro.offlined) {
-                    // If the execution failed, put them back to queuedTransactions
+                if (await new dce(e,this.graphQLClient).execute() === Ro.offlined) { // new TransactionExecutor
+                    // If the execution is offline, we should try to execute the previously executing
+                    // transaction again and move the newly added transaction back to queuedTransactions.
                     this.executingTransactions = this.executingTransactions.filter(s=>!e.includes(s)),
                     this.queuedTransactions.unshift(...e),
                     this.outstandingTransactionCountChanged(); 
                     return
                 }
             } catch {}
+            // If the transactions success to execute.
             for (const n of e)
-                this.executingTransactions.splice(this.executingTransactions.indexOf(n), 1), // remove the transaction from exectuting transactions
-                await this.database.deleteTransaction(n.id), // once the transaction has completed, we could delete it from the database because we won't send it again
+                // Remove the transaction from exectuting transactions.
+                this.executingTransactions.splice(this.executingTransactions.indexOf(n), 1), 
+                // Once the transaction is completed, LSE delete it from the database because we won't send it again.
+                await this.database.deleteTransaction(n.id), 
+                // Pay attention here. Each transaction has a syncIdNeededForCompletion, and if it is larger than
+                // the client's lastSyncId, LSE will not complete this transaction but until
+                // the corresponding delta packets arrived. TODO: Why?
                 (!this.lastSyncId || (n.syncIdNeededForCompletion ?? 0) > this.lastSyncId) && this.completedButUnsyncedTransactions.push(n);
             this.outstandingTransactionCountChanged(),
             this.dequeueNextTransactions()
