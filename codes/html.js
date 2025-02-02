@@ -80308,7 +80308,7 @@ const eg = class eg { // class: Database
                 })
                   , r = n.objectStore(Mc);
                 for (const s of e) {
-                    const i = s.serialize();
+                    const i = s.serialize(); // Serialize a transaction to an object.
                     await r.put(i)
                 }
                 await n.done
@@ -80973,16 +80973,19 @@ class y3 extends Zo {
     }
 }
 /** Update Transaction */
-class zu extends Zo { // update transaction
+class zu extends Zo { // UpdateTransaction
     static async fromSerializedData(e, n, r, s) {
+        // This method actually replays a transaction.
         const i = Me.getModelClass(s.modelClass);
         if (!i)
             return;
-        const a = await n.hydrateModel(i, s.modelId);
+        const a = await n.hydrateModel(i, s.modelId); // To replay a transaction, first we should hydrate the model
+        // than the transaction modified.
         if (a) {
             const o = new zu(a,s.batchIndex,n,r,s.additionalUpdateArgs);
             o.id = e,
             o.changeSnapshot = s.changeSnapshot;
+            // Here, the changes are updated to the model.
             for (const l in s.changeSnapshot.changes) {
                 const d = s.changeSnapshot.changes[l].unoptimizedUpdated || s.changeSnapshot.changes[l].updated;
                 a.setSerializedValue(l, d, a.properties[l])
@@ -81021,7 +81024,7 @@ class zu extends Zo { // update transaction
                 this.model.setSerializedValue(e, n, this.model.properties[e])
             }
     }
-    serialize() {
+    serialize() { // Serialize a UpdateTransaction
         return {
             id: this.id,
             type: "update",
@@ -81154,11 +81157,11 @@ class uce { // class TranscactionQueue
     }
     async loadPersistedTransactions(e) {
         this.database = e;
-        const n = await this.database.getAllTransactions(); // load cached transactions from local database
+        const n = await this.database.getAllTransactions(); // load cached transactions from local database.
         F.network(`Loaded ${n.length} persisted transactions`),
         // The only place to assign `persistedTransactionsEnqueue`
         this.persistedTransactionsEnqueue = (await Promise.all(n.map(async s=>{
-            const i = await this.deserialize(s.id, s);
+            const i = await this.deserialize(s.id, s); // Deserialize this transaction.
             if (i != null && i.id)
                 return i;
             i ? F.error("Invalid deserialized transaction", void 0, {
@@ -81168,11 +81171,13 @@ class uce { // class TranscactionQueue
                 transaction: i,
                 serializedTransaction: s
             }),
-            this.database.deleteTransaction(s.id)
+            this.database.deleteTransaction(s.id) // The transaction are removed from the database.
+            // Because they will be saved into the databases again when they are moved to `queuedTransacctions`.
         }
         ))).concrete();
         const r = this.persistedTransactionsEnqueue.reduce((s,i)=>Math.max(s, i.id), 0);
-        Zo.setNextId(r + 1),
+        Zo.setNextId(r + 1), 
+        // Hydrate models of that transaction, so user can see the changes they made last time.
         await Promise.all(this.persistedTransactionsEnqueue.map(s=>this.syncClient.hydrateModel(s.model.modelClass, s.model.id, {
             onlyIfLocallyAvailable: !0
         })))
@@ -82679,6 +82684,7 @@ const vce = be.MINUTE * 2
             const p = a.type === Ra.partial ? Oo.validateDependencies(s.modelsToLoad) : !0;
             if (F.network(`Got ${h.length} stored models.`),
             this.startObservability(),
+            // Load cached transactions and replay them.
             await this.transactionQueue.loadPersistedTransactions(this.database).catch(C=>{
                 F.error("Error loading persisted transactions", C)
             }
@@ -82850,9 +82856,9 @@ const vce = be.MINUTE * 2
     transactionsForModel(e) {
         return this.transactionQueue.transactionsForModel(e)
     }
-    async waitUntilSyncId(e) {
+    async waitUntilSyncId(e) { // Wait for the client reaching at `lastSyncId` of e
+        // e for the `lastSyncId` to wait for.
         // hs is related to demo
-        // let's ignore that
         hs || this.lastSyncId >= e || await this.syncWaitQueue.wait(e)
     }
     applyArchiveResponse(e) {

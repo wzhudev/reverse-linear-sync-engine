@@ -15,7 +15,7 @@ What I look for in a sync engine includes:
 2. **Rich features**: It should support partial syncing, enforce permission control, and include features like undo/redo, offline availability, and edit history.
 3. **Great developer experience**: Ideally, it should allow model definitions in an ORM-like manner. Developers should not need to be experts in sync engines to build collaborative applications.
 
-[Linear](https://linear.app)'s [Linear Sync Engine (LSE)](https://linear.app/docs/offline-mode) provides an elegant solution to all the aforementioned requirements. Moreover, it offers an intuitive API that abstracts away the underlying complexity, making feature development significantly simpler. For instance, updating the title of an issue can be as straightforward as:
+[Linear](https://linear.app)'s Linear Sync Engine (LSE) provides an elegant solution to all the aforementioned requirements. Moreover, it offers an intuitive API that abstracts away the underlying complexity, making feature development significantly simpler. For instance, updating the title of an issue can be as straightforward as:
 
 ```jsx
 issue.title = "New Title";
@@ -967,6 +967,8 @@ issue.assignee = user;
 issue.save();
 ```
 
+<!-- TODO: 这个图可以再细化一下 -->
+
 ![](./imgs/transaction-overview.png)
 
 Again, let's start by getting a high-level overview of the process before diving into the details.
@@ -975,8 +977,8 @@ Again, let's start by getting a high-level overview of the process before diving
 2. When `issue.save()` is called, an **`UpdateTransaction`** is created. This transaction captures the changes made to the model.
 3. The generated `UpdateTransaction` is then added to a request queue. Simultaneously, it is saved into the `__transactions` table in IndexedDB for **persistence**.
 4. The `TransactionQueue` schedules timers (sometimes triggering them immediately) to send queued transactions to the server in **batches**.
-5. Once a batch is successfully processed by the backend, it is removed from the `__transactions` table in IndexedDB. Additionally, the Local Storage Engine (LSE) clears the cached batch to free up resources.
-6. Finally, the server sends delta batches to all connected clients. These delta packets will resolve pending transactions. // TODO: 这里对第六点介绍的不是很准确，需要修改下
+5. Once a batch is successfully processed by the backend, it is removed from the `__transactions` table in IndexedDB. Additionally, the Local Storage Engine (LSE) clears the cached batch.
+6. Transactions will wait for the delta packets that carries `lastSyncId` to complete.
 
 Besides `UpdatingTransaction`, there are 4 kinds of transactions and `TransactionQueue` provides corresponding methods to construct them.
 
@@ -1045,6 +1047,7 @@ In the end of `TransactionQueue.update`, `TransactionQueue.enqueueTransaction` w
 > - `ww`: `MicrotaskScheduler`
 > - `as.prepare`: `Model.prepare`
 > - `as.updateMutation`: `Model.updateMutation`
+> - `zu.graphQLMutation`: `UpdateTransaction.graphQLMutation`
 
 Besides creating transaction instances, `TransactionQueue` is also responsible for managing transactions and sending them to the server. `TransactionQueue` uses four arrays to manage transactions:
 
@@ -1095,23 +1098,15 @@ There are another special array `completedButUnsyncedTransactions`. I will expla
 
 > [!NOTE] Code References
 >
-> - `uce.dequeueNextTransactions`: `TransactionQueue.dequeueNextTransactions`
-> - `zu.graphQLMutation`: `UpdateTransaction.graphQLMutation`
-> - `as.updateMutation`:
-> - `uce.executeTransactionBatch`:
-> - `dce.execute`:
-> - `M3.prepare`: `BaseTransaction.prepare`
-> - `M3.transactionCompleted`: `BaseTransaction.prepare`
+> - `uce.executeTransactionBatch`: `TransactionQueue.executeTransactionBatch`
+> - `dce.execute`: `TransactionExecutor.execute`
+> - `OE`: `WaitSyncQueue`
 
-LSE creates a `TransactionExecutor` to execute these transactions. `TransactionExecutor.execute` to create a GraphQL request:
-
-<!-- TODO: 在 TransactionExecutor 里面需要聚合所有的 `graphQLMutationPrepared` -->
+LSE creates a `TransactionExecutor` to execute a transaction batch. In `TransactionExecutor.execute`, `graphQLMutationPrepared` of each transaction in the batch will be merged into a single GraphQL mutating query and sent to the server. For example: 
 
 ```json
 {
-  "query": "mutation IssueUpdate($issueUpdateInput: IssueUpdateInput!) {
-    issueUpdate(id: \"a3dad63b-8302-4f1f-a874-a80e6d9ed418\", input: $issueUpdateInput) { lastSyncId }
-  }",
+  "query": "mutation IssueUpdate($issueUpdateInput: IssueUpdateInput!) { issueUpdate(id: \"a3dad63b-8302-4f1f-a874-a80e6d9ed418\", input: $issueUpdateInput) { lastSyncId } }",
   "variables": {
     "issueUpdateInput": {
       "assigneeId": "4e8622c7-0a24-412d-bf38-156e073ab384"
@@ -1122,7 +1117,7 @@ LSE creates a `TransactionExecutor` to execute these transactions. `TransactionE
 
 ```
 
-And the response contains a `lastSyncId`.
+And the response contains `lastSyncId`.
 
 ```json
 {
@@ -1134,27 +1129,84 @@ And the response contains a `lastSyncId`.
 }
 ```
 
-In addition to including the `lastSyncId` in the response body when executing a transaction, the delta packets generated by the server for this transaction will also carry the same `lastSyncId`. When the delta packets are broadcasted to a client, the client can use the `lastSyncId` to determine whether its data is consistent with the server's data. If the client's `lastSyncId` is less than the `lastSyncId` received from the server, it indicates that the client has missed some incremental updates.
+This example seems too simple. Let's take an another example of creating a new `Project`, and you can see clearly how LSE handles multiple transactions in a batch. The request would be a GraphQL query like this:
 
-So, when the transactions are successfully executed, if the `lastSyncId` is larger than the client's `lastSyncId`, this transaction will be moved to `completedButUnsyncedTransactions`. As we will discuss in the next section, it is essential for perform rebasing.
+```json
+{
+  "query": "mutation ProjectCreate_DocumentContentCreate($projectCreateInput: ProjectCreateInput!, $documentContentCreateInput: DocumentContentCreateInput!) { o1:projectCreate(input: $projectCreateInput) { lastSyncId }, o2:documentContentCreate(input: $documentContentCreateInput) { lastSyncId } }",
+  "variables": {
+    "projectCreateInput": {
+      "id": "940e248c-2226-4b0a-a14e-8a410ccfaaa7",
+      "name": "New Project",
+      "description": "",
+      "color": "#bec2c8",
+      "statusId": "fd3884d6-b740-41d9-919c-796119d6c5ed",
+      "memberIds": [],
+      "sortOrder": 1005.71,
+      "prioritySortOrder": 0,
+      "priority": 0,
+      "teamIds": [
+        "369af3b8-7d07-426f-aaad-773eccd97202"
+      ]
+    },
+    "documentContentCreateInput": {
+      "id": "bb75174e-1e26-46ae-94b6-67977be435c3",
+      "projectId": "940e248c-2226-4b0a-a14e-8a410ccfaaa7"
+    }
+  },
+  "operationName": "ProjectCreate_DocumentContentCreate"
+}
+```
+
+And the response would be:
+
+```json
+{
+  "data": {
+    "o1": {
+      "lastSyncId": 0
+    },
+    "o2": {
+      "lastSyncId": 3588467486
+    }
+  }
+}
+```
+
+When receiving the response, LSE calls `transactionCompleted` to complete the transactions. Transaction's `syncInNeededForCompletion` properties are set to the largest `lastSyncId` in the response, and they will wait for the sync action with the same `lastSyncId` arrives at the client to complete. If the transaction cannot complete immediately, they will be pushed into the `completedButUnsyncedTransactions`. As we will discuss in the next chapter, it is essential for perform rebasing.
+
+An important fact is that: until now, LSE has **not** changed model tables (e.g `Issue` table) in the IndexedDB yet. That's true because in Linear, the local database is actually a subset of the server database (which is the [SSOT]()) and it cannot contains changes that has not been approved by the server. The transactions can be rejected by the server and if LSE modified the model tables, it would be very difficult and error-prone to revert changes to the local database.
 
 ### Persisted Transactions
 
-<!-- TODO: 这里介绍缓存下来的 transactions 是如何被再次发送出去的 -->
+> [!NOTE] Code References
+>
+> - `eg.putTransaction`: `Database.putTransaction`
+> - `ng.bootstrap`: `SyncClient.bootstrap`
+> - `uce.loadPersistedTransactions`: `TransactionQueue.loadPersistedTransactions`
+> - `uce.confirmPersistedTransactions`: `TransactionQueue.confirmPersistedTransactions`
+
+In the previous chapters, we mentioned that when transactions are moved to `queuedTransactions`, they are stored into `__transactions` table as well for caching purposes. During this process, the `serialize` method of transactions would be called. Each type of transactions implements its own `serialize` method.
+
+The next time Linear starts, cached transactions are loaded in `TransactionQueue.loadPersistedTransactions`, in which they will be deserialized. Similarly, each type of transactions also implements a static `fromSerializedData`, this method will replay the transaction add modify the models in memory. So we can restore the state of the client after a restart.
+
+Finally, during the bootstrap process, `TransactionQueue.confirmPersistedTransactions` will be called to move these transactions to `createdTransactions`.
 
 ### Takeaway of Chapter 3
 
 Let's sum up this chapter.
 
-**Firstly, client-side operations will never directly modify the tables in the local database!** Instead, they only alter in-memory models. The changes are then sent as transactions to the server for submission. Only after receiving the corresponding delta packages from the server does the local database get updated. A simple way to verify this is: if you make any changes offline and then reload the page, those changes will not appear on the webpage. **Linear does not apply these transactions locally because they are designed to be executed only on the backend.** In other words, the frontend and backend use distinct methods for updating data. Unlike Operational Transformation (OT), both the client and server perform operations to update data. Given that the backend also needs to execute additional server-side business logic, this approach is quite reasonable.
+**Firstly, client-side operations will never directly modify the tables in the local database!** Instead, they only alter in-memory models, and the changes are sent as transactions to the server. As we will see in the next chapter, only after receiving the corresponding delta packages from the server does the local models get updated. 
 
-Secondly, unlike OT, which only sends an acknowledgment signal to the mutator, **LSE (Last-Server-Executed) sends all modified model properties to all connected clients, even if the client making the modification is not the mutator.** This simplifies the management of WebSocket connections.
+**Secondly, LSE uses a transaction queue to manage transactions.** The queue schedules transactions to be sent to the server in batches. This batching mechanism helps to reduce the number of requests sent to the server and improves efficiency.
 
-Lastly, LSE employs a simple **Last-Writer-Wins strategy to resolve conflicts** and only addresses conflicts in `InsertionTransaction` and `UpdateTransaction`.
+**Lastly, LSE handles transactions in a robust manner.** It ensures that transactions are persisted in the local database and can be restored after a client restart. This approach guarantees that the client will never lose any changes, even if the client crashes or the network connection is lost.
+
+<!-- TODO: the following should be changes in chapter 4. -->
 
 ## Chapter 4: Delta Packets
 
-In this chapter, we will look into how LSE handles incremental udpates and keep the client up to date with the server.
+In this chapter, we will look into how LSE handles incremental updates and keep the client up to date with the server.
 
 ### Establish Connection
 
@@ -1280,19 +1332,19 @@ You can see clearly in the example above that each action has an integer `id` fi
 
 Actions have `action` type. All possible types are:
 
-82. `I` for insertion
-83. `U` for updating
-84. `A` for archive
-85. `D` for deletion
-86. `C` for covering
-87. `G` for changing sync groups
-88. `S` for changing sync groups, (it is a pity that I haven't figure out its differences with `G`)
-89. `V` for unarchive
+1. `I` for insertion
+2. `U` for updating
+3 `A` for archive
+4. `D` for deletion
+5. `C` for covering
+6. `G` for changing sync groups
+7. `S` for changing sync groups, (it is a pity that I haven't figure out its differences with `G`)
+8. `V` for unarchive
 
 `ng.applyDelta` is responsible for handling these sync actions. It does the following things (refer to the source for implementation details):
 
-90. **Figure out if the user is added to or removed from sync groups**. If the user is added to a sync group, LSE will send a network request (indeed a partial bootstrapping) for models of that sync group. LSE will wait for the response before continue processing the sync actions.
-91. Load dependents of these actions.
+1. **Figure out if the user is added to or removed from sync groups**. If the user is added to a sync group, LSE will send a network request (indeed a partial bootstrapping) for models of that sync group. LSE will wait for the response before continue processing the sync actions.
+2. Load dependents of these actions.
 
 ---
 
@@ -1300,12 +1352,12 @@ Actions have `action` type. All possible types are:
 
 ---
 
-92. Write data of the new sync groups and dependents into the local database.
-93. Loop through all sync actions and resolve them to update the local database.
+3. Write data of the new sync groups and dependents into the local database.
+4. Loop through all sync actions and resolve them to update the local database.
 
 In this step, LSE will call `TransactionQueue.modelUpserted` to remove local `CreationTransaction`s that are not valid after the sync actions. If the `CreationTransaction`'s UUID is same with the model's ID, the transaction should be cancelled. Its intention is obviously avoid UUID confliction since the UUID is generated on the client side. Also, if user leaves a sync group, models of that sync group will be removed as well.
 
-94. Loop all sync actions again to change in-memory data.
+5. Loop all sync actions again to change in-memory data.
 
 ---
 
@@ -1333,8 +1385,8 @@ This rebasing occurs in the `rebaseTransactions` method, where all `UpdateTransa
 
 ---
 
-97. Update `lastSyncId` of the client, update `firstSyncId` if sync groups change.
-98. Completed transactions waiting for this `lastSyncId`.
+7. Update `lastSyncId` of the client, update `firstSyncId` if sync groups change.
+8. Completed transactions waiting for this `lastSyncId`.
 
 ```typescript
 this.syncWaitQueue.progressQueue(this.lastSyncId), // If some transactions are waiting for a lastSyncId to complete, complete them.
@@ -1349,6 +1401,13 @@ If we take a closer look at the `UpdateTransaction` and the corresponding delta 
 That is an important question! And should the delta packet's of the same sync groups should be applied in a sequence?
 
 ### Takeaway of Chapter 4
+
+<!-- 
+Secondly, unlike OT, which only sends an acknowledgment signal to the mutator, **LSE (Last-Server-Executed) sends all modified model properties to all connected clients, even if the client making the modification is not the mutator.** This simplifies the management of WebSocket connections. -->
+
+<!-- Lastly, LSE employs a simple **Last-Writer-Wins strategy to resolve conflicts** and only addresses conflicts in `InsertionTransaction` and `UpdateTransaction`. -->
+
+
 
 ## Chapter 5: Misc
 
