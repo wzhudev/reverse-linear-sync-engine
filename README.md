@@ -731,7 +731,7 @@ In the `hydrate` method of `LazyReferenceCollection`, the first to step is to ca
 
 > [!note] Code References
 >
-> - constructor of `Issue` (`re`)
+> - `re.constructor`: `Issue.constructor`
 > - `LazyReferenceCollectionImpl` (`Et`)
 >   - `hydrate`
 >   - `getCoveringPartialIndexValues`
@@ -817,12 +817,9 @@ You can clearly see the relationship between the two images above. Essentially, 
 
 As we'll explore later, partial indexes are used to query models from the server, and also used to check whether the target model has already been fetched from the server.
 
-<!-- TODO: 以下内容没有经过 chatGPT 优化过 -->
-
 > [!note]
 > Code References
 >
-> - `re.constructor`: `Issue.constructor`
 > - `ng.hydrateModelsByIndexedKey`: `SyncClient.hydrateModelsByIndexedKey`
 > - `eg.getModelDataByIndexedKey`: `Database.getModelDataByIndexedKey`
 > - `Jm`: `PartialStore`
@@ -830,30 +827,27 @@ As we'll explore later, partial indexes are used to query models from the server
 >   - `hasModelsForPartialIndexValues`
 >   - `getAllFromIndex`
 
-After partial indexed are retrieved, `hydrate` method of `LazyReferenceCollection` will call `SyncedStore.hydrateModels` and consequently `SyncClient.hydrateModelsByIndexedKey`.
+After the partial indices are retrieved, the `hydrate` method of `LazyReferenceCollection` calls `SyncedStore.hydrateModels`, which in turn triggers `SyncClient.hydrateModelsByIndexedKey`.
+
+Let's assume we're lazy-loading `Comment` objects for an `Issue`. The method parameters would be as follows:
+
+1. `e`: The class of the `Comment` model.
+2. `t`: The parameters for the query. The `key` indicates that we're loading `Comment` references by `Issue`, and `coveringPartialIndexValues` signifies that these `Comment` objects may also be indirectly referenced by other models. `value` is the ID of the `Issue` that references the `Comment`.
 
 ![covering partial index values](./imgs/covering-partial-index-values.png)
 
-_Please note that the implementation has slightly changed from my copied source code._
+In this implementation, the `LazyReferenceCollection` (LSE) first checks if the models can be loaded from the local database by calling `Database.getModelDataByIndexedKey`. If not, it decides whether a **network hydration** is needed based on the following conditions:
 
-Let's assuming we are lazy loading `Comment` of an `Issue`, the parameters will be:
+1. **Missing `coveringPartialIndexValues`:** If the `coveringPartialIndexValues` parameter is absent, the LSE can't determine if the requested models were previously fetched from the server.
+2. **Absent partial index in the store:** If the `coveringPartialIndexValues` are not found in the partial store, a network hydration shall be necessary.
 
-1. `e`: The class of `Comment`
-2. `t`: Parameters of this query. `key` means we are loading `Comment`s reference by an `Issue`. And `coveringPartialIndexValues` means these `Comment`s can be indirectly referenced by other models.
-3. `value`: The id of the `Issue` referencing the `Comment`.
-
-In the implementation of this method, firstly, LSE will check if it can load the models from the local database by calling `Database.getModelDataByIndexedKey`, or a **network hydration** is necessary. LSE will perform network hydration on one of the following conditions:
-
-1. There's no `coveringPartialIndexValues` in the function parameters, meaning LSE cannot determine if the request models has been requested from the server before.
-2. `coveringPartialIndexValues` cannot be found in the partial store.
-
-Please recall that when we talked about `ObjectStore`, we learned that for each model whose `loadStrategy` is `partial`, there will be a partial index store for storing partial indexes. This is when the store will be used. For example, `Comment`'s partial index store has two records which means LSE had tried to load `Comment`s with these indexes, so LSE can be sure that either it has fetched corresponding comments for the server some time in the past. In the next section we will see when will partial indexes get updated.
+Recall that when we discussed `ObjectStore`, we learned that for models with a `partial` load strategy, there exists a partial index store to track partial indices. This is the point at which the store comes into play. For example, if the `Comment` model’s partial index store contains two records, it means the LSE has previously attempted to load `Comment` objects using those indices, confirming that the corresponding comments were fetched from the server at some point. We will discuss when these partial indices get updated later.
 
 ![partial index stores](./imgs/partial-index-stores.png)
 
-3. `canSkipNetworkHydration` options returns `true`.
+3. **`canSkipNetworkHydration` returns `true`:** If this option is set to `true`, LSE can skip the network hydration and proceed with loading the data locally.
 
-If LSE doesn't need to perform a network hydration, it will query the IndexedDB with the index by calling `getAllFromIndex`. Otherwise, it will call `BatchModelLoader.addRequest` to schedule a network hydration.
+If no network hydration is necessary, LSE will query the IndexedDB by calling `getAllFromIndex`. If a network hydration is required, it will schedule the request via `BatchModelLoader.addRequest`.
 
 > [!NOTE]
 > Code references
@@ -868,17 +862,17 @@ If LSE doesn't need to perform a network hydration, it will query the IndexedDB 
 > - `Database` (`eg`)
 >   - `setPartialIndexValueForModel`
 
-`BatchModelLoader`, as its name suggests, batch a group of network hydration requests to a single GraphQL request. We will not discuss how LSE dedupes requests here, but we will focus on how it handles the batch.
+`BatchModelLoader`, as the name suggests, batches multiple network hydration requests into a single GraphQL request. While we won’t dive into the details of how LSE deduplicates requests in this article (you can refer to the code, where I’ve added comments for clarity), the focus here will be on how LSE handles the batching process.
 
-In method `BatchModelLoader.handleBatch`, Linear divides requests into 3 categories:
+In the `BatchModelLoader.handleBatch` method, Linear divides requests into three categories:
 
-1. Requests that are associated with an `indexedKey`.
-2. Requests that are associated a `SyncGroup`.
-3. Requests that are either associated with an `indexedKey` nor `SyncGroup`.
+1. Requests associated with a partial index key.
+2. Requests associated with a `SyncGroup`.
+3. Requests that are neither associated with an `indexedKey` nor a `SyncGroup`.
 
-LSE uses different methods for different categories of requests, respectively `loadSyncBatch` `loadPartialModels` and `loadFullModels`.
+LSE handles each category using different methods: `loadSyncBatch`, `loadPartialModels`, and `loadFullModels`.
 
-In `loadSyncBatch`, it will call `GraphQLClient.resetModelsJsonStream` to send a request to `https://client-api.linear.app/sync/batch`. The request body will be like:
+In `loadSyncBatch`, it calls `GraphQLClient.resetModelsJsonStream` to send a request to `https://client-api.linear.app/sync/batch`. The request body will look like this:
 
 ```json
 {
@@ -898,7 +892,7 @@ In `loadSyncBatch`, it will call `GraphQLClient.resetModelsJsonStream` to send a
 }
 ```
 
-And the response will be like:
+And the response will look like this:
 
 ```json
 {"id":"9a4ea82f-bd0e-4a3d-a8f3-430ea570bbbb","createdAt":"2025-01-27T05:11:59.451Z","updatedAt":"2025-01-27T05:11:59.337Z","issueId":"bda1a998-91b0-4ceb-8f89-91b7f6608685","userId":"4e8622c7-0a24-412d-bf38-156e073ab384","bodyData":"{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Some comment.\"}]}]}","reactionData":[],"subscriberIds":["4e8622c7-0a24-412d-bf38-156e073ab384"],"__class":"Comment"}
@@ -910,11 +904,11 @@ And the response will be like:
 _metadata_={"returnedModelsCount":{"Comment":1,"IssueHistory":5}}
 ```
 
-Does this response looks familiar to you? Yes, this is also the format of the responding of a full bootstrapping. Later in `handleLoadedModels`, this response will be parsed, models will be written into the database and created in memory. And what is also important is that the **partial index of the request will also get saved into the database**, so the next time LSE tries to hydrate this model, it will know it is unnecessary to perform a network hydration.
+Does this response look familiar to you? Yes, it follows the same format used in full bootstrapping. Later, in handleLoadedModels, the response will be parsed, the models will be written to the database, and objects will be created in memory. Importantly, the partial index of the request will be **saved in the database**, so the next time LSE tries to hydrate the model, it will know that network hydration is unnecessary.
 
-Wait, hold on a second. Why is `firstSyncId` in `/sync/patch` request params but not `lastSyncId`, since `lastSyncId` is how we can tell if the client is update to date with latest data?
+You might wonder: _Why is `firstSyncId` included in the `/sync/patch` request parameters, but not `lastSyncId`? After all, `lastSyncId` is used to determine if the client is up to date with the latest data. Won't these models be updated?_ The answer lies in how LSE handles incremental changes (delta packets), which I’ll explain in Chapter 4. The basic idea is this: when a delta packet arrives, LSE checks which models are affected and haven't yet been loaded, and immediately loads those models. If lazy hydration completes after this process, LSE will not overwrite the existing models in memory. You can refer to `createModelsFromData` method for implementation details.
 
-It has something to do with how LSE deals with incremental changes (delta packets) which I will talk about in chapter 4. But the basic idea is: after the full bootstrapping, LSE will subscribe to delta packets from the server. When dealing a delta packet, LSE finds out the models that the delta packet affects and have not been loaded into memory. It will immediately load those models. So this method shall only loaded models that has not been changed since `firstSyncId`.
+---
 
 > [!NOTE]
 > Code references
@@ -924,36 +918,44 @@ It has something to do with how LSE deals with incremental changes (delta packet
 > - `Database` (`eg`)
 >   - `loadPartialModels`
 
-Under some circumstances `syncGroups` will be the query params instead of partial indexed keys. For example, a `Team` may have a lots of `Issue`s associated, so it has an `issue` property whose type is `lazyReferenceCollection`, and `customNetworkHydration` is used to define the query params for loading `Issue`s of a `Team`.
+Under certain circumstances, `syncGroups` will be used as the query parameters instead of partial indexed keys. For example, a `Team` may have many associated `Issue`s, so it has an `issue` property of type `lazyReferenceCollection`. In this case, `customNetworkHydration` is used to define the query parameters for loading the `Issue`s of a `Team`.
 
 ```typescript
-this.issues = new Et(re,this,"teamId",void 0,{
-    customNetworkHydration: ()=>[{
+this.issues = new Et(re, this, "teamId", void 0, {
+    customNetworkHydration: () => [{
         modelClass: re, // Issue model
         syncGroup: this.id
     }, {
         modelClass: mr, // Attachment model
         syncGroup: this.id
-        }]
-    }),
+    }]
+});
 ```
 
-So when LSE loads `Issue`s of a `Team`, `loadPartialModels` calls `BootstrapHelper.partialBootstrap` and the later sends a request like this:
+When LSE loads the `Issue`s of a `Team`, `loadPartialModels` calls `BootstrapHelper.partialBootstrap`, which sends a request like this:
 
 ```
 https://client-api.linear.app/sync/bootstrap?type=partial&noSyncPackets=true&useCFCaching=true&noCache=true&firstSyncId=3577987809&syncGroups=aa788b7b-9b76-4caa-a439-36ca3b3d6820&onlyModels=Issue,Attachment&modelsHash=4f1dabd6151ad381a502c352b677d5c4
 ```
 
-You can see from the request's parameters that `modelClass` are mapped to `onlyModels` property and `syncGroups` are also there.
+As you can see from the request parameters, `modelClass` is mapped to the `onlyModels` property, and `syncGroups` are also included in the request.
+
+---
 
 ### Takeaway of Chapter 2
 
+<!-- TODO: use chatGPT to optimize my expressions from here. -->
+
 Let's sum up what we've learned in chapter 2:
 
-- LSE create two types of databases to store metadata and models.
-- There are three different bootstrapping types: full, partial and local.
-- LSE uses `lastSyncId` to determine the sequence of transactions and help clients to find out if it misses incremental updates from the server.
-- LSE can lazily hydrate models into memory from the server or the local database.
+- LSE creates two types of databases: 
+  - A `linear_databases` database to store information about other databases.
+  - A `linear_database_<id>` database to store models, metadata, and transactions for a specific workspace.
+- There are three bootstrapping types: full, partial, and local. We’ve discussed full bootstrapping in detail.
+- The sync ID is the global version number of the database. It helps determine whether the client is up to date with the latest data.
+- LSE can lazily hydrate models into memory, either from the server or the local database.
+
+In the upcoming chapters, we'll explore how LSE synchronizes changes between clients and the server, starting with how local changes are sent to the server.
 
 ## Chapter 3: Transactions
 
@@ -1200,6 +1202,10 @@ Let's sum up this chapter.
 
 In this chapter, we will look into how LSE handles incremental updates and keep the client up to date with the server.
 
+Let's start with an overview just like we did in the previous chapters!
+
+<!-- TODO: 画一个 overview 图 -->
+
 ### Establish Connection
 
 > [!NOTE] Code References
@@ -1384,13 +1390,15 @@ This rebasing occurs in the `rebaseTransactions` method, where all `UpdateTransa
 this.syncWaitQueue.progressQueue(this.lastSyncId), // If some transactions are waiting for a lastSyncId to complete, complete them.
 ```
 
-#### Server-side business logic
+### Server-side side effects
 
 If we take a closer look at the `UpdateTransaction` and the corresponding delta packets, it's clear that the delta packets carry more data than the transaction itself—specifically, an `IssueHistory` of the assignee change. Unlike OT, where the server mainly handles operation transformations, validates permissions, and executes operations to maintain a single source of truth, LSE's backend involves a lot of business logic in addition to these tasks.
 
 ### How to Know If The Client is Missing Delta Packets?
 
 That is an important question! And should the delta packet's of the same sync groups should be applied in a sequence?
+
+<!-- TODO: 这一部分内容需要扩写一下 -->
 
 ### Takeaway of Chapter 4
 
@@ -1439,6 +1447,9 @@ This raises an interesting question: while a transaction can perform "undo" and 
 
 ### Permissions
 
+
+### The Server's Role
+
 ## Conclusion
 
 %% TODO 为什么在这里提到了 SyncActionStore? %%
@@ -1451,6 +1462,14 @@ No pagination?
 
 TransientRemoval
 
+I will compare the LSE's approach with OT so have a better understanding of how it works.
+
+
+We've learned quiet a lot about how LSE works, but there are still some topics that are not covered in this post. Here are some of them:
+
+
+If you're interested in learning more about these topics, please let me know in the Issues. And I strongly recommend you to share your thoughts, questions and findings in the Issues as well. I'm looking forward to hearing from you!
+
 ## Appendix A: Actions and Computed Values
 
 Actions (`rt`) & Computed (`O`)
@@ -1460,8 +1479,11 @@ Let's take `moveToTeam` and `parents` of `Issue` for example, there is `Action` 
 ```jsx
 Pe([rt], re.prototype, "moveToTeam", null);
 Pe([O], re.prototype, "parents", null);
+```
 
-// The source code would be something like:
+And the original code is like this:
+
+```typescript
 @ClientModel("Issue")
 class Issue {
   @Action
@@ -1477,8 +1499,6 @@ class Issue {
 ```
 
 **Action** and **computed** are core MobX primitives. During bootstrapping, these properties are made observable by directly calling MobX's `makeObservable` API.
-
-## Appendix B: What's not covered in this post?
 
 ---
 

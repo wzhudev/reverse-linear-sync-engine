@@ -82973,6 +82973,9 @@ const vce = be.MINUTE * 2
                 if (a) {
                     const o = this.findById(a, i.id);
                     if (o)
+                        // Before creating the model, check if there's already a model with given ID.
+                        // If dontUpdateExistingModels is not false, it will update that model.
+                        // Otherwise, it will just return the existing object.
                         return (n == null ? void 0 : n.dontUpdateExistingModels) !== !0 && o.updateFromData(i, {
                             dataContainsAllProperties: !0
                         }),
@@ -84636,7 +84639,8 @@ class wm extends PE { // BatchModelLoader
             return {
                 result: []
             };
-        const n = await this.graphQLClient.restModelsJsonStream("/sync/batch", { // Send request to server. We cell this method in `fullBoostrap`.
+        // Send request to server.
+        const n = await this.graphQLClient.restModelsJsonStream("/sync/batch", { 
             retry: {
                 times: 2,
                 delayMs: o=>(o + 1) * 250,
@@ -84645,8 +84649,8 @@ class wm extends PE { // BatchModelLoader
             },
             method: "POST",
             body: JSON.stringify({
-                // Note we are using `firstSyncId` not `lastSyncId` here. Why?
-                // This is an interesting question. Because we should put partial syncing and 
+                // Note LSE is using `firstSyncId` not `lastSyncId` here.
+                // This is an interesting question. Because we need to put partial syncing and 
                 // incremental updates both into consideration.
                 firstSyncId: this.graphQLClient.getFirstSyncId(),
                 requests: e.map(o=>({
@@ -84768,7 +84772,10 @@ class wm extends PE { // BatchModelLoader
             skipCreatingModelsInMemory: s
         })
     }
-    handleLoadedModels(e, n, r) { // e for loaded models, n for requests, r for options
+    handleLoadedModels(e, n, r) { 
+        // e for loaded models
+        // n for requests, 
+        // r for options
         if (r != null && r.skipCreatingModelsInMemory && (r != null && r.skipSavingModelsInDatabase))
             throw new Error("Cannot skip creating models in memory and saving models in database at the same time");
         const s = this.database
@@ -84807,6 +84814,7 @@ class wm extends PE { // BatchModelLoader
                     // And set partial index value for that model.
                     await Promise.all(n.map(u=>{
                         const h = u.request;
+                        // Important! Partial index values are updated here!
                         return s.setPartialIndexValueForModel(Me.getClassName(h.modelClass), Zn.createPartialIndexValue(h))
                     }
                     ).concrete())
@@ -84829,7 +84837,9 @@ class wm extends PE { // BatchModelLoader
         let o = [];
         // Create models in memory.
         r != null && r.skipCreatingModelsInMemory || (o = i.createModelsFromData(e, {
-            dontUpdateExistingModels: !0
+            // If the model has already been loaded by other ways, should not
+            // update existing model because that will be newer.
+            dontUpdateExistingModels: !0 // true
         }));
         const l = {};
         for (const d of o)
