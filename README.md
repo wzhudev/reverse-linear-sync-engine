@@ -819,14 +819,13 @@ As we'll explore later, partial indexes are used to query models from the server
 
 <!-- TODO: 以下内容没有经过 chatGPT 优化过 -->
 
-> [!note] Code References
+> [!note]
+> Code References
 >
-> - constructor of `Issue` (`re`)
-> - `SyncClient` (`ng`)
->   - `hydrateModelsByIndexedKey`
-> - `Database` (`eg`)
->   - `getModelDataByIndexedKey`
-> - `PartialStore` (`Jm`)
+> - `re.constructor`: `Issue.constructor`
+> - `ng.hydrateModelsByIndexedKey`: `SyncClient.hydrateModelsByIndexedKey`
+> - `eg.getModelDataByIndexedKey`: `Database.getModelDataByIndexedKey`
+> - `Jm`: `PartialStore`
 >   - `getAllForIndexedKey`
 >   - `hasModelsForPartialIndexValues`
 >   - `getAllFromIndex`
@@ -967,15 +966,13 @@ issue.assignee = user;
 issue.save();
 ```
 
-<!-- TODO: 这个图可以再细化一下 -->
-
 ![](./imgs/transaction-overview.png)
 
-Again, let's start by getting a high-level overview of the process before diving into the details.
+In this chapter, I will use `UpdateTransaction` as an example. Again, let's start by getting a high-level overview of the process before diving into the details.
 
 1. When a property is assigned a new value, the system records three key pieces of information: the name of the changed property, and the old value. **Models in memory** are updated **immediately** to reflect these changes.
 2. When `issue.save()` is called, an **`UpdateTransaction`** is created. This transaction captures the changes made to the model.
-3. The generated `UpdateTransaction` is then added to a request queue. Simultaneously, it is saved into the `__transactions` table in IndexedDB for **persistence**.
+3. The generated `UpdateTransaction` is then added to a request queue. Simultaneously, it is saved into the `__transactions` table in IndexedDB for **caching**.
 4. The `TransactionQueue` schedules timers (sometimes triggering them immediately) to send queued transactions to the server in **batches**.
 5. Once a batch is successfully processed by the backend, it is removed from the `__transactions` table in IndexedDB. Additionally, the Local Storage Engine (LSE) clears the cached batch.
 6. Transactions will wait for the delta packets that carries `lastSyncId` to complete.
@@ -990,7 +987,7 @@ Besides `UpdatingTransaction`, there are 4 kinds of transactions and `Transactio
 | `g3`           | `DeletionTransaction`   | The transaction to delete a model. E.g. deleting a comment of an issue. |
 | `m3`           | `ArchivalTransaction`   | The transaction to archive a model. E.g. deleting an issue.             |
 | `y3`           | `UnarchiveTransaction`  | The transaction to unarchive a model.                                   |
-| `Tc`           | `LocalTransaction`      | %% TODO: this has something to do with Undo & REdo %%                   |
+| `Tc`           | `LocalTransaction`      | A simpler transaction wrapper of a model, doing nothing.                |
 
 ### Figuring out what has been changed
 
@@ -1013,7 +1010,7 @@ It is clear that before `save()` is called, the **model in memory has already
 
 ### Generating an `UpdateTransaction`
 
-> [!note] 
+> [!note]
 > Code References
 >
 > - `as.save`: `ClientModel.save` and it calls `SyncedStore.save`
@@ -1036,7 +1033,7 @@ In the end of `TransactionQueue.update`, `TransactionQueue.enqueueTransaction` w
 
 ### Queueing transactions
 
-> [!note] 
+> [!note]
 > Code References
 >
 > - `uce`: `TransactionQueue`
@@ -1053,19 +1050,19 @@ Besides creating transaction instances, `TransactionQueue` is also responsible f
 
 ![transaction queues](./imgs/transaction-queues.png)
 
-1. `createdTransactions`: After a transaction is created, it firstly goes into this array. 
+1. `createdTransactions`: After a transaction is created, it firstly goes into this array.
 
 A `commitCreatedTransactions` scheduler will moves all transactions in this array to the end of `queuedTransactions`, and increment the `batchIndex` of `TransactionQueue` by 1. This scheduler is a microtask scheduler, which means **transactions created in the same event loop will have the same `batchIndex`**.
 
-When transactions are moved to `queuedTransactions`, they are stored into `__transactions` table as well. If the client get closed before the transactions are sent to the server, it can load these transactions from that table and resend these transactions. 
+When transactions are moved to `queuedTransactions`, they are stored into `__transactions` table as well. If the client get closed before the transactions are sent to the server, it can load these transactions from that table and resend these transactions.
 
-2. `queuedTransactions`: These transactions are waiting to be executed. 
+2. `queuedTransactions`: These transactions are waiting to be executed.
 
-A `dequeueTransaction` scheduler will prepare transactions in this queue and move some of them in a batch to `executingTransactions`. 
+A `dequeueTransaction` scheduler will prepare transactions in this queue and move some of them in a batch to `executingTransactions`.
 
 There are lots of things to consider when deciding which transactions should be moved to `executeTransactions` in a batch.
 
-First, if there are already too many transactions in `queuedTransactions`, the scheduler will not move any transactions to `executingTransactions`. This is to prevent the client from sending too many transactions to the server at once. 
+First, if there are already too many transactions in `queuedTransactions`, the scheduler will not move any transactions to `executingTransactions`. This is to prevent the client from sending too many transactions to the server at once.
 
 Second, transactions should have the same `batchIndex`, and they should be **independent** of the executing transactions.
 
@@ -1102,7 +1099,7 @@ There are another special array `completedButUnsyncedTransactions`. I will expla
 > - `dce.execute`: `TransactionExecutor.execute`
 > - `OE`: `WaitSyncQueue`
 
-LSE creates a `TransactionExecutor` to execute a transaction batch. In `TransactionExecutor.execute`, `graphQLMutationPrepared` of each transaction in the batch will be merged into a single GraphQL mutating query and sent to the server. For example: 
+LSE creates a `TransactionExecutor` to execute a transaction batch. In `TransactionExecutor.execute`, `graphQLMutationPrepared` of each transaction in the batch will be merged into a single GraphQL mutating query and sent to the server. For example:
 
 ```json
 {
@@ -1114,7 +1111,6 @@ LSE creates a `TransactionExecutor` to execute a transaction batch. In `Transact
   },
   "operationName": "IssueUpdate"
 }
-
 ```
 
 And the response contains `lastSyncId`.
@@ -1145,9 +1141,7 @@ This example seems too simple. Let's take an another example of creating a new `
       "sortOrder": 1005.71,
       "prioritySortOrder": 0,
       "priority": 0,
-      "teamIds": [
-        "369af3b8-7d07-426f-aaad-773eccd97202"
-      ]
+      "teamIds": ["369af3b8-7d07-426f-aaad-773eccd97202"]
     },
     "documentContentCreateInput": {
       "id": "bb75174e-1e26-46ae-94b6-67977be435c3",
@@ -1196,13 +1190,11 @@ Finally, during the bootstrap process, `TransactionQueue.confirmPersistedTransac
 
 Let's sum up this chapter.
 
-**Firstly, client-side operations will never directly modify the tables in the local database!** Instead, they only alter in-memory models, and the changes are sent as transactions to the server. As we will see in the next chapter, only after receiving the corresponding delta packages from the server does the local models get updated. 
+**Firstly, client-side operations will never directly modify the tables in the local database!** Instead, they only alter in-memory models, and the changes are sent as transactions to the server. As we will see in the next chapter, only after receiving the corresponding delta packages from the server does the local models get updated.
 
 **Secondly, LSE uses a transaction queue to manage transactions.** The queue schedules transactions to be sent to the server in batches. This batching mechanism helps to reduce the number of requests sent to the server and improves efficiency.
 
 **Lastly, LSE handles transactions in a robust manner.** It ensures that transactions are persisted in the local database and can be restored after a client restart. This approach guarantees that the client will never lose any changes, even if the client crashes or the network connection is lost.
-
-<!-- TODO: the following should be changes in chapter 4. -->
 
 ## Chapter 4: Delta Packets
 
@@ -1334,12 +1326,12 @@ Actions have `action` type. All possible types are:
 
 1. `I` for insertion
 2. `U` for updating
-3 `A` for archive
-4. `D` for deletion
-5. `C` for covering
-6. `G` for changing sync groups
-7. `S` for changing sync groups, (it is a pity that I haven't figure out its differences with `G`)
-8. `V` for unarchive
+   3 `A` for archive
+3. `D` for deletion
+4. `C` for covering
+5. `G` for changing sync groups
+6. `S` for changing sync groups, (it is a pity that I haven't figure out its differences with `G`)
+7. `V` for unarchive
 
 `ng.applyDelta` is responsible for handling these sync actions. It does the following things (refer to the source for implementation details):
 
@@ -1402,12 +1394,10 @@ That is an important question! And should the delta packet's of the same sync gr
 
 ### Takeaway of Chapter 4
 
-<!-- 
+<!--
 Secondly, unlike OT, which only sends an acknowledgment signal to the mutator, **LSE (Last-Server-Executed) sends all modified model properties to all connected clients, even if the client making the modification is not the mutator.** This simplifies the management of WebSocket connections. -->
 
 <!-- Lastly, LSE employs a simple **Last-Writer-Wins strategy to resolve conflicts** and only addresses conflicts in `InsertionTransaction` and `UpdateTransaction`. -->
-
-
 
 ## Chapter 5: Misc
 
@@ -1459,39 +1449,9 @@ SyncActionStore 实际上存储了所有被删除以及 removal 的数据的记�
 
 No pagination?
 
-Other types of transactions.
 TransientRemoval
 
-## Appendix A: Minimized and Possible Original Names Lookup
-
-| Minimized names                                                                                                                                         | Possible original names                                                     | Description                                                                                                                                                                    |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Me` `rr`                                                                                                                                               | `ModelRegistry`                                                             |                                                                                                                                                                                |
-| `w`                                                                                                                                                     | `ApplicationStore`                                                          |                                                                                                                                                                                |
-| `Ln`                                                                                                                                                    | `makeObservable`                                                            | `MobX` API to make an object observable.                                                                                                                                       |
-| `sg` `hf` `km`                                                                                                                                          | `SyncedStore`                                                               | It is the `store` in models. It provides lots of methods to get or manipulate models.                                                                                          |
-| `Hr`                                                                                                                                                    | `SyncedClient`                                                              |                                                                                                                                                                                |
-| `Dt`                                                                                                                                                    | `Database`                                                                  |                                                                                                                                                                                |
-| `jn`                                                                                                                                                    | `DatabaseManager`                                                           |                                                                                                                                                                                |
-| `cce`                                                                                                                                                   | `StoreManager`                                                              | The in-memory store manager. It manages lots of object stores. Each store maps to a model, and maps to a table in the database.                                                |
-| `TE`                                                                                                                                                    | `FullStore`                                                                 | A store which content should be loaded all-at-once.                                                                                                                            |
-| `Jm` `p3`                                                                                                                                               | `PartialStore`                                                              | A store which content can be partially loaded. It extends `FullStore` .                                                                                                        |
-| `uce`                                                                                                                                                   | `TransactionQueue`                                                          |                                                                                                                                                                                |
-| `A8` `sd`                                                                                                                                               | `GraphQLClient`                                                             | A GraphQL client. It would be used by many classes.                                                                                                                            |
-| `w`                                                                                                                                                     | `Property`                                                                  | This refers to a self-owned property of a model. For example, `title` is a property of `Issue`.                                                                                |
-| `_g`                                                                                                                                                    | `EphemeralProperty`                                                         | This is also a self-owned property of a model but is not stored in the database. For example, `lastUserInteraction` is an ephemeral property of `User`.                        |
-|                                                                                                                                                         |                                                                             | For example, `documentContentId` of `Issue` refers to the document model's ID of the issue's description.                                                                      |
-| `pe`                                                                                                                                                    | `Reference`                                                                 |                                                                                                                                                                                |
-| `xe` `Nt`                                                                                                                                               | `ReferenceCollection` `LazyReferenceCollection`                             | This is used for 1 to many relationships. For example, `issues` is a lazy reference collection of `IssueLabel`. And `notifications` is a reference collection of `Initiative`. |
-| `pe` `hr` `Ue` `g5` `dt` `kl`                                                                                                                           | `WithBackReference` `LazyWithBackReference` `Reference` `LazyBackReference` | These 6 decorators are used to declare reference and back references with different options.                                                                                   |
-| `ReferenceArray`                                                                                                                                        | `ii`                                                                        |                                                                                                                                                                                |
-| Many to many relationships. For example, `labels` are reference array of `Issue`. (But `issues` are lazy reference collection of `Label`).              |                                                                             |                                                                                                                                                                                |
-| `as`                                                                                                                                                    | `Model`                                                                     |                                                                                                                                                                                |
-| The base class that each model will inherit. The class declares a `store` and `__mobx` . The are the critical parts of data fetching and observability. |                                                                             |                                                                                                                                                                                |
-| The class provides lots of static methods to register models, properties and their metadata.                                                            |                                                                             |                                                                                                                                                                                |
-| `Qc`                                                                                                                                                    | `UUID`                                                                      | A helper function to generate UUID.                                                                                                                                            |
-
-## Appendix B: Actions and Computed Values
+## Appendix A: Actions and Computed Values
 
 Actions (`rt`) & Computed (`O`)
 
@@ -1518,7 +1478,9 @@ class Issue {
 
 **Action** and **computed** are core MobX primitives. During bootstrapping, these properties are made observable by directly calling MobX's `makeObservable` API.
 
-## Appendix C: What's not covered in this post?
+## Appendix B: What's not covered in this post?
+
+---
 
 3. **`persistence`**: Indicates how the property should be stored in the database. Options include `none`, `createOnly`, `updateOnly`, and `createAndUpdate`.
 4. **`referenceOptional`**: Its distinction from `referenceNullable` is unclear.

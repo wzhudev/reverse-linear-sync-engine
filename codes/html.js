@@ -80727,9 +80727,9 @@ class m3 extends Zo {
     }
 }
 /**
- * Local transcation
+ * LocalTranscation
  */
-class Tc {
+class Tc { // LocalTransaction
     constructor(e) {
         this.model = e
     }
