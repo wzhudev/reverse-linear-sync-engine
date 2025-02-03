@@ -922,13 +922,16 @@ Under certain circumstances, `syncGroups` will be used as the query parameters i
 
 ```typescript
 this.issues = new Et(re, this, "teamId", void 0, {
-    customNetworkHydration: () => [{
-        modelClass: re, // Issue model
-        syncGroup: this.id
-    }, {
-        modelClass: mr, // Attachment model
-        syncGroup: this.id
-    }]
+  customNetworkHydration: () => [
+    {
+      modelClass: re, // Issue model
+      syncGroup: this.id,
+    },
+    {
+      modelClass: mr, // Attachment model
+      syncGroup: this.id,
+    },
+  ],
 });
 ```
 
@@ -948,7 +951,7 @@ As you can see from the request parameters, `modelClass` is mapped to the `onlyM
 
 Let's sum up what we've learned in chapter 2:
 
-- LSE creates two types of databases: 
+- LSE creates two types of databases:
   - A `linear_databases` database to store information about other databases.
   - A `linear_database_<id>` database to store models, metadata, and transactions for a specific workspace.
 - There are three bootstrapping types: full, partial, and local. We’ve discussed full bootstrapping in detail.
@@ -959,37 +962,37 @@ In the upcoming chapters, we'll explore how LSE synchronizes changes between cli
 
 ## Chapter 3: Transactions
 
-In the previous chapter, we explored how LSE loads existing models from the server. Now, we'll shift our focus to how LSE synchronizes changes between clients and the server. Specifically, this chapter will cover how client-side changes are synced to the server.
+In the previous chapter, we explored how LSE loads existing models from the server. Now, we’ll shift our focus to how LSE synchronizes changes between clients and the server. Specifically, this chapter will examine how client-side changes are synced to the server.
 
-Let's start with a fundamental question: **What happens when we change the assignee of an Issue?** How does LSE manage networking, error handling, offline caching, and other underlying complexities—all within just two lines of code?
+Let’s start with a fundamental question: **What happens when we change the assignee of an Issue?** How does LSE handle networking, offline caching, observability, and other underlying complexities—all in just two lines of code?
 
 ```jsx
 issue.assignee = user;
 issue.save();
 ```
 
+In this chapter, I will use `UpdateTransaction` as an example. As before, let's start with a high-level overview of the process before diving into the details.
+
 ![](./imgs/transaction-overview.png)
 
-In this chapter, I will use `UpdateTransaction` as an example. Again, let's start by getting a high-level overview of the process before diving into the details.
+1. When a property is assigned a new value, the system records key information: the name of the changed property and its previous value. **Models in memory** are updated **immediately** to reflect these changes.
+2. When `issue.save()` is called, an **`UpdateTransaction`** is created. This transaction captures the changes made to the model.
+3. The generated `UpdateTransaction` is then added to a request queue. Simultaneously, it is saved in the `__transactions` table in IndexedDB for **caching**.
+4. The `TransactionQueue` schedules timers (sometimes triggering them immediately) to send the queued transactions to the server in **batches**.
+5. Once a batch is successfully processed by the backend, it is removed from the `__transactions` table in IndexedDB. The Local Storage Engine (LSE) then clears the cached batch.
+6. Transactions will wait for delta packets containing the `lastSyncId` to complete before proceeding.
 
-1. When a property is assigned a new value, the system records three key pieces of information: the name of the changed property, and the old value. **Models in memory** are updated **immediately** to reflect these changes.
-2. When `issue.save()` is called, an **`UpdateTransaction`** is created. This transaction captures the changes made to the model.
-3. The generated `UpdateTransaction` is then added to a request queue. Simultaneously, it is saved into the `__transactions` table in IndexedDB for **caching**.
-4. The `TransactionQueue` schedules timers (sometimes triggering them immediately) to send queued transactions to the server in **batches**.
-5. Once a batch is successfully processed by the backend, it is removed from the `__transactions` table in IndexedDB. Additionally, the Local Storage Engine (LSE) clears the cached batch.
-6. Transactions will wait for the delta packets that carries `lastSyncId` to complete.
+In addition to `UpdateTransaction`, there are four other types of transactions, and `TransactionQueue` provides corresponding methods to create them.
 
-Besides `UpdatingTransaction`, there are 4 kinds of transactions and `TransactionQueue` provides corresponding methods to construct them.
-
-| Minimized name | Possible original names | Description                                                             |
-| -------------- | ----------------------- | ----------------------------------------------------------------------- |
-| `M3` `Zo`      | `BaseTransaction`       | The base class of all transactions.                                     |
-| `Hu`           | `CreationTransaction`   | The transaction to add an model.                                        |
-| `zu`           | `UpdatingTransaction`   | The transaction to update properties on an existing model.              |
-| `g3`           | `DeletionTransaction`   | The transaction to delete a model. E.g. deleting a comment of an issue. |
-| `m3`           | `ArchivalTransaction`   | The transaction to archive a model. E.g. deleting an issue.             |
-| `y3`           | `UnarchiveTransaction`  | The transaction to unarchive a model.                                   |
-| `Tc`           | `LocalTransaction`      | A simpler transaction wrapper of a model, doing nothing.                |
+| Minimized name | Original name              | Description                                                                |
+| -------------- | -------------------------- | -------------------------------------------------------------------------- |
+| `M3` `Zo`      | `BaseTransaction`           | The base class for all transaction types.                                  |
+| `Hu`           | `CreationTransaction`       | The transaction for adding a new model object.                              |
+| `zu`           | `UpdatingTransaction`       | The transaction for updating properties of an existing model object.        |
+| `g3`           | `DeletionTransaction`       | The transaction for deleting a model object (e.g., deleting a comment).     |
+| `m3`           | `ArchivalTransaction`       | The transaction for archiving a model object (e.g., archiving an issue).    |
+| `y3`           | `UnarchiveTransaction`      | The transaction for unarchiving a model object.                             |
+| `Tc`           | `LocalTransaction`          | A simpler transaction wrapper for a model object that performs no actions. |
 
 ### Figuring out what has been changed
 
@@ -1002,13 +1005,13 @@ Besides `UpdatingTransaction`, there are 4 kinds of transactions and `Transactio
 > - `as.referencedPropertyChanged`: `ClientModel.referencedPropertyChanged`
 > - `as.updateReferencedModel`: `ClientModel.updateReferencedModel`
 
-As discussed in the [Observability](#observability-m1) section, LSE leverages the `M1` function to make model properties observable. Beyond enabling observability, `M1` also plays a pivotal role in transaction generation. Here's how it works:
+As discussed in the [Observability](#observability-m1) section, LSE leverages the `M1` function to make model properties observable. Beyond enabling observability, `M1` also plays a critical role in transaction generation. Here’s how it works:
 
-When a property of a model is assigned a new value, the setter intercepts the assignment and triggers `propertyChanged` which calls `markPropertyChanged` with the **property's name**, the **old value** and the **new value**. Next, `markPropertyChanged` serializes the old value and the and store it in `modifiedProperties`. Later, it will be used to generate a transaction.
+When a property of a model is assigned a new value, the setter intercepts the assignment, triggering `propertyChanged`, which then calls `markPropertyChanged` with the **property's name**, the **old value**, and the **new value**. Next, `markPropertyChanged` serializes the old value and stores it in `modifiedProperties`. This serialized data will later be used to generate a transaction.
 
-![](./imgs/modified-properties.png)
+![Modified Properties](./imgs/modified-properties.png)
 
-It is clear that before `save()` is called, the **model in memory has already been updated**! Transactions are **not** responsible for updating in-memory models—this happens immediately when a property is changed. However, transactions do play a role in **undo** and **redo** operations and updating in-memory models. We'll dive deeper into this topic in **Chapter 5**.
+It’s important to note that **before `save()` is called, the model in memory is already updated**. Transactions **do not** update in-memory models—this happens immediately when a property is changed. However, transactions do play a key role in **undo** and **redo** operations, as well as in updating in-memory models. We’ll explore this in greater detail in **Chapter 5**.
 
 ### Generating an `UpdateTransaction`
 
@@ -1020,18 +1023,17 @@ It is clear that before `save()` is called, the **model in memory has already
 > - `ng.update`: `SyncClient.update`
 > - `uce.update`: `TransactionQueue.update`
 
-In `SyncClient.update`, `TransactionQueue.update` will be called to generate an `UpdateTransaction` instance. During the construction of `UpdateTransaction`, the model's `changeSnapshot` function will be called. Ultimately, an object is generated to represent the changes and bound to `changeSnapshot` property of `UpdateTransaction`.
+In `SyncClient.update`, the `TransactionQueue.update` method is called to generate an `UpdateTransaction` instance. During the construction of the `UpdateTransaction`, the model's `changeSnapshot` function is invoked. Ultimately, an object is generated to represent the changes and is bound to the `changeSnapshot` property of the `UpdateTransaction`.
 
-![](./imgs/change-snapshot.png)
+![Change Snapshot](./imgs/change-snapshot.png)
 
 An `UpdateTransaction` has the following properties:
 
-- `retries`: indicates how many times the client has tried to send the transaction to the server;
-- `type`: type of transaction.
-- `model`: the in-memory model object this transaction is related to
-- `batchIndex`: each transaction has a `batchIndex`. The `TransactionQueue` has a `batchIndex` property and when creating a transaction, it will be assigned to the transaction. Transactions that have the same `batchIndex` will be sent to the server in batch.
+- **`type`**: The type of transaction.
+- **`model`**: The in-memory model object this transaction is related to.
+- **`batchIndex`**: Each transaction has a `batchIndex`. The `TransactionQueue` also has a `batchIndex` property, and when creating a transaction, this index is assigned. Transactions with the same `batchIndex` are grouped together and sent to the server in a single batch.
 
-In the end of `TransactionQueue.update`, `TransactionQueue.enqueueTransaction` will be called to add the transaction to the `createdTransactions` queue.
+At the end of `TransactionQueue.update`, the `TransactionQueue.enqueueTransaction` method is called to add the transaction to the `createdTransactions` queue.
 
 ### Queueing transactions
 
@@ -1048,27 +1050,29 @@ In the end of `TransactionQueue.update`, `TransactionQueue.enqueueTransaction` w
 > - `as.updateMutation`: `Model.updateMutation`
 > - `zu.graphQLMutation`: `UpdateTransaction.graphQLMutation`
 
-Besides creating transaction instances, `TransactionQueue` is also responsible for managing transactions and sending them to the server. `TransactionQueue` uses four arrays to manage transactions:
+Besides creating transaction instances, `TransactionQueue` is also responsible for managing transactions and sending them to the server. It uses four arrays to handle these transactions:
+
+<!-- TODO: 这个图可以再细化一点 -->
 
 ![transaction queues](./imgs/transaction-queues.png)
 
-1. `createdTransactions`: After a transaction is created, it firstly goes into this array.
+1. **`createdTransactions`**: After a transaction is created, it is initially placed in this array.
 
-A `commitCreatedTransactions` scheduler will moves all transactions in this array to the end of `queuedTransactions`, and increment the `batchIndex` of `TransactionQueue` by 1. This scheduler is a microtask scheduler, which means **transactions created in the same event loop will have the same `batchIndex`**.
+A **`commitCreatedTransactions`** scheduler moves all transactions from this array to the end of `queuedTransactions` and increments the `batchIndex` of `TransactionQueue` by 1. This scheduler operates as a microtask, which means that **transactions created within the same event loop will share the same `batchIndex`**.
 
-When transactions are moved to `queuedTransactions`, they are stored into `__transactions` table as well. If the client get closed before the transactions are sent to the server, it can load these transactions from that table and resend these transactions.
+When transactions are moved to `queuedTransactions`, they are also stored in the `__transactions` table. If the client closes before these transactions are sent to the server, it can reload them from this table and resend them.
 
-2. `queuedTransactions`: These transactions are waiting to be executed.
+2. **`queuedTransactions`**: These transactions are waiting to be executed.
 
-A `dequeueTransaction` scheduler will prepare transactions in this queue and move some of them in a batch to `executingTransactions`.
+A **`dequeueTransaction`** scheduler prepares transactions from this queue and moves them in batches to `executingTransactions`.
 
-There are lots of things to consider when deciding which transactions should be moved to `executeTransactions` in a batch.
+Several factors determine which transactions are moved to `executingTransactions` in a batch:
 
-First, if there are already too many transactions in `queuedTransactions`, the scheduler will not move any transactions to `executingTransactions`. This is to prevent the client from sending too many transactions to the server at once.
+- **Transaction Limit:** If there are too many transactions in `queuedTransactions`, the scheduler will not move any to `executingTransactions` to avoid overwhelming the server with too many requests.
+  
+- **Batch Index & Independence:** Transactions must have the same `batchIndex` and should be **independent** of each other to be grouped in a batch.
 
-Second, transactions should have the same `batchIndex`, and they should be **independent** of the executing transactions.
-
-LSE will call `prepare` method on each transaction. This method will generate a GraphQL mutation query for the transaction. Each transaction object has a `graphQLMutation` function to generate these queries, and bind it to the `graphQLMutationPrepared` property of that transaction. For example, updating the assignee of an issue would generate a query like this:
+Before executing, LSE calls the `prepare` method on each transaction. This method generates a GraphQL mutation query for the transaction. Each transaction object has a `graphQLMutation` function that generates these queries and binds them to the `graphQLMutationPrepared` property. For example, updating the assignee of an issue might generate a query like this:
 
 ```json
 {
@@ -1084,24 +1088,26 @@ LSE will call `prepare` method on each transaction. This method will generate a 
 }
 ```
 
-Third, `graphQLMutationPrepared` will be evaluated by its size. If the accumulated size of the beginning transactions in `executingTransactions` is larger than a certain threshold, the scheduler will not move the remaining transactions to `executingTransactions`. This is to prevent the client from sending a too big GraphQL query to the server.
+- **GraphQL mutation size limit:** the `graphQLMutationPrepared` property is evaluated based on its size. If the accumulated size of the transactions at the beginning of `executingTransactions` exceeds a certain threshold, the scheduler will stop moving additional transactions to `executingTransactions`. This is done to prevent sending overly large GraphQL queries to the server.
 
-And then, the scheduler will call `executeTransactionBatch` to move transactions in the next batch from `queuedTransactions` to `executingTransactions`.
+Finally, the scheduler calls `executeTransactionBatch` to move the next batch of transactions from `queuedTransactions` to `executingTransactions`.
 
-3. `executingTransactions`: These transactions have been sent to the server but have not been accepted (nor rejected) yet. In the next section, we will discuss how these transactions are executed.
-4. `persistedTransactionsEnqueue`. When the database bootstraps, transactions saved in `__transactions` would be loaded into this array. After remote updates have been processed, they are moved to `queueTransactions` and waiting to be executed. We will discuss this in the last section of this chapter.
+3. **`executingTransactions`**: These transactions have been sent to the server but have not yet been accepted or rejected. In the next section, we will discuss how these transactions are executed.
 
-There are another special array `completedButUnsyncedTransactions`. I will explain how it works when we talking about rebasing transactions in Chapter 4.
+4. **`persistedTransactionsEnqueue`**: When the database is bootstrapped, transactions saved in the `__transactions` table are loaded into this array. After remote updates are processed, they are moved to `queuedTransactions` and wait to be executed. We will cover this in the final section of this chapter.
+
+There is also a special array called **`completedButUnsyncedTransactions`**. I will explain how it works when we discuss **rebasing transactions** in Chapter 4.
 
 ### Executing transactions
 
-> [!NOTE] Code References
+> [!NOTE] 
+> Code References
 >
 > - `uce.executeTransactionBatch`: `TransactionQueue.executeTransactionBatch`
 > - `dce.execute`: `TransactionExecutor.execute`
 > - `OE`: `WaitSyncQueue`
 
-LSE creates a `TransactionExecutor` to execute a transaction batch. In `TransactionExecutor.execute`, `graphQLMutationPrepared` of each transaction in the batch will be merged into a single GraphQL mutating query and sent to the server. For example:
+LSE creates a `TransactionExecutor` to execute a batch of transactions. In the `TransactionExecutor.execute` method, the `graphQLMutationPrepared` property of each transaction in the batch is merged into a single GraphQL mutation query and sent to the server. For example:
 
 ```json
 {
@@ -1115,7 +1121,7 @@ LSE creates a `TransactionExecutor` to execute a transaction batch. In `Transact
 }
 ```
 
-And the response contains `lastSyncId`.
+The response contains `lastSyncId` for each mutating query.
 
 ```json
 {
@@ -1127,7 +1133,7 @@ And the response contains `lastSyncId`.
 }
 ```
 
-This example seems too simple. Let's take an another example of creating a new `Project`, and you can see clearly how LSE handles multiple transactions in a batch. The request would be a GraphQL query like this:
+This example might seem too simple because it only contains a single mutation query. Let’s look at a more complex example, such as creating a new `Project`. In this case, you can see clearly how LSE handles multiple transactions within a batch. The request would look like this:
 
 ```json
 {
@@ -1154,7 +1160,7 @@ This example seems too simple. Let's take an another example of creating a new `
 }
 ```
 
-And the response would be:
+And the response would be like this:
 
 ```json
 {
@@ -1169,9 +1175,11 @@ And the response would be:
 }
 ```
 
-When receiving the response, LSE calls `transactionCompleted` to complete the transactions. Transaction's `syncInNeededForCompletion` properties are set to the largest `lastSyncId` in the response, and they will wait for the sync action with the same `lastSyncId` arrives at the client to complete. If the transaction cannot complete immediately, they will be pushed into the `completedButUnsyncedTransactions`. As we will discuss in the next chapter, it is essential for perform rebasing.
+When the response is received, LSE removes the transactions from the `executingTransactions` queue, clears their cache from the `__transactions` table and calls `transactionCompleted` method of each transform to complete the transactions. The transaction's `syncInNeededForCompletion` property is set to the largest `lastSyncId` in the response, and the transaction will wait for the sync action with the matching `lastSyncId` to arrive at the client before it is considered complete. If the transaction cannot complete immediately, it is moved to the `completedButUnsyncedTransactions` queue. As discussed in the next chapter, this is crucial for performing **transaction rebasing**.
 
-An important fact is that: until now, LSE has **not** changed model tables (e.g `Issue` table) in the IndexedDB yet. That's true because in Linear, the local database is actually a subset of the server database (which is the [SSOT]()) and it cannot contains changes that has not been approved by the server. The transactions can be rejected by the server and if LSE modified the model tables, it would be very difficult and error-prone to revert changes to the local database.
+An important point to note is that, up until now, LSE has **not** modified model tables (e.g., the `Issue` table) in IndexedDB. This is because, in Linear, the local database is a subset of the server database (the SSOT), and it cannot contain changes that have not been approved by the server. If the server rejects the transaction, modifying the model tables prematurely could make it difficult and error-prone to revert the changes in the local database.
+
+If the server rejects the mutation query, `transactionCompleted` is still called, but this time it will be invoked with an error. In response, the transaction will trigger its `rollback` method to undo any changes made on the client side and be removed from the `executingTransaction` queue.
 
 ### Persisted Transactions
 
@@ -1187,6 +1195,8 @@ In the previous chapters, we mentioned that when transactions are moved to `queu
 The next time Linear starts, cached transactions are loaded in `TransactionQueue.loadPersistedTransactions`, in which they will be deserialized. Similarly, each type of transactions also implements a static `fromSerializedData`, this method will replay the transaction add modify the models in memory. So we can restore the state of the client after a restart.
 
 Finally, during the bootstrap process, `TransactionQueue.confirmPersistedTransactions` will be called to move these transactions to `createdTransactions`.
+
+There's a small chance that this process could lead to unintended issues. For instance, if the client sends a transaction to the server but the window closes before a response is received, the transaction will be stored in the `__transactions` table. When the client restarts, the transaction will be reloaded and sent to the server again. Since some transactions are not idempotent, users may encounter errors such as: "You can't delete a model that doesn't exist." While this is a rare occurrence and generally won't impact the user experience significantly, it’s worth noting. (In OT systems, this could cause more serious issues, which is why transactions or operations typically include an incremental counter for deduplication).
 
 ### Takeaway of Chapter 3
 
@@ -1447,7 +1457,6 @@ This raises an interesting question: while a transaction can perform "undo" and 
 
 ### Permissions
 
-
 ### The Server's Role
 
 ## Conclusion
@@ -1464,9 +1473,7 @@ TransientRemoval
 
 I will compare the LSE's approach with OT so have a better understanding of how it works.
 
-
 We've learned quiet a lot about how LSE works, but there are still some topics that are not covered in this post. Here are some of them:
-
 
 If you're interested in learning more about these topics, please let me know in the Issues. And I strongly recommend you to share your thoughts, questions and findings in the Issues as well. I'm looking forward to hearing from you!
 
