@@ -1050,8 +1050,6 @@ At the end of `TransactionQueue.update`, the `TransactionQueue.enqueueTransactio
 
 Besides creating transaction instances, `TransactionQueue` is also responsible for managing transactions and sending them to the server. It uses four arrays to handle these transactions:
 
-<!-- TODO: 这个图可以再细化一点 -->
-
 ![transaction queues](./imgs/transaction-queues.png)
 
 1. **`createdTransactions`**: After a transaction is created, it is initially placed in this array.
@@ -1211,8 +1209,6 @@ Let's sum up this chapter.
 In this chapter, we will explore how LSE handles incremental updates and ensures that the client stays synchronized with the server.
 
 Let's begin with an overview, similar to what we did in the previous chapters!
-
-<!-- TODO: 画一个 overview 图 -->
 
 1. At the end of the bootstrapping process, after the persisted transactions are loaded, the client establishes a WebSocket connection to the server to receive incremental updates, or delta packets.
 2. Handling delta packets involves several key tasks: updating models in memory and in the local database, rebasing transactions, and more.
