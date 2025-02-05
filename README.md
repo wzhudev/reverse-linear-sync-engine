@@ -393,7 +393,8 @@ Notably, for models with a `loadStrategy` of `partial`, an additional database n
 
 ### Create Databases & Tables in IndexedDB
 
-> [!NOTE] Code References
+> [!NOTE] 
+> Code References
 >
 > - `eg.open`: `Database.open`
 > - `jn` or `Xn`: `DatabaseManager` - `databaseInfo`, `registerDatabase`, `database`
@@ -509,7 +510,8 @@ At this point, LSE has prepared the databases and is ready to load data from the
 
 ### Determine the Bootstrapping Type
 
-> [!NOTE] Code References
+> [!NOTE]
+> Code References
 >
 > - `ng.bootstrap`: `SyncClient.bootstrap`
 > - `eg.requiredBootstrap`: `Database.requiredBootstrap`
@@ -545,9 +547,10 @@ Additional fields in the `requiredBootstrap` 's return include:
 
 ### Bootstrapping the Database
 
-> [!NOTE] Code References
+> [!NOTE] 
+> Code References
 >
-> 1. `ng.bootstrap`: `SyncClient.boostrap`
+> 1. `ng.bootstrap`: `SyncClient.bootstrap`
 > 2. `eg.bootstrap`: `Database.bootstrap`
 > 3. `Xm.fullBootstrap`: `BootstrapHelper.fullBootstrap`
 > 4. `sd.restModelsJsonStreamGen`: `GraphQLClient.restModelsJsonStreamGen`
@@ -655,7 +658,8 @@ Finally, the retrieved models are written to their respective object stores, and
 
 ### Hydration and Object Pool
 
-> [!NOTE] Code References
+> [!NOTE] 
+> Code References
 >
 > 1. `ng.bootstrap`: `SyncClient.bootstrap`.
 > 2. `eg.getAllInitialHydratedModelData`: `Database.getAllInitialHydratedModelData`.
@@ -673,7 +677,8 @@ When constructing a model object, LSE does not pass the dehydrated model data di
 
 ### Lazy Hydration
 
-> [!note] Code References
+> [!note] 
+> Code References
 >
 > - `as.hydrate`: `Model.hydrate`.
 > - constructor of `Issue` (`re`)
@@ -729,7 +734,8 @@ In the `hydrate` method of `LazyReferenceCollection`, the first to step is to ca
 
 ---
 
-> [!note] Code References
+> [!note] 
+> Code References
 >
 > - `re.constructor`: `Issue.constructor`
 > - `LazyReferenceCollectionImpl` (`Et`)
@@ -1179,7 +1185,8 @@ If the server rejects the mutation query, `transactionCompleted` is still called
 
 ### Persisted Transactions
 
-> [!NOTE] Code References
+> [!NOTE] 
+> Code References
 >
 > - `eg.putTransaction`: `Database.putTransaction`
 > - `ng.bootstrap`: `SyncClient.bootstrap`
