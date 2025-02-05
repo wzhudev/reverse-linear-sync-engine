@@ -1394,7 +1394,7 @@ As mentioned in the previous chapter, LSE will not modify the local database unt
 
 5. **Loop through all sync actions again to update in-memory data.**
 
---
+---
 
 In this step, LSE loops through the sync actions twice.
 
