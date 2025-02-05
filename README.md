@@ -157,7 +157,7 @@ _When I started writing this post, there were 76 models in Linear. As I am about
 > What is `local` used for?
 >
 > You might wonder what the `local` load strategy is used for, given that no models currently use it.
-> In his presentation at Local First Conf, Tuomas explained how new features can be developed without modifying server-side code. My guess is that this is achieved by initially setting a new model’s load strategy to `local`, ensuring it persists only in the local IndexedDB. Once the model is finalized, syncing can be enabled by changing its load strategy to one of the other available strategies.
+> In his presentation at Local First Conf, Tuomas explained how new features can be developed without modifying server-side code. My guess is that this is achieved by initially setting a new model's load strategy to `local`, ensuring it persists only in the local IndexedDB. Once the model is finalized, syncing can be enabled by changing its load strategy to one of the other available strategies.
 
 LSE uses **TypeScript decorators** to register metadata in `ModelRegistry`. The decorator responsible for registering models' metadata is `ClientModel` (also known as `We`).
 
@@ -345,13 +345,13 @@ Let's summarize the key points covered in this chapter:
 - **Property Types**: LSE categorizes properties into several types, such as `property`, `reference`, `referenceModel`, `referenceCollection`, `backReference`, and `referenceArray`.
 - **Reactive Data Handling**: LSE uses `Object.defineProperty` to implement getters and setters, enabling efficient reference handling and observability.
 
-In the upcoming chapters, we’ll explore how this metadata is leveraged in practice. Keep reading! 🚀
+In the upcoming chapters, we'll explore how this metadata is leveraged in practice. Keep reading! 🚀
 
 ## Chapter 2: Bootstrapping & Lazy Loading
 
 Once the models are defined, the next step is to **load them into the client**. In this chapter, we'll explore how LSE **bootstraps and lazily loads models**.
 
-We’ll start with a high-level overview to establish a foundational understanding before diving into more intricate details. Since this process involves multiple modules, I’ll also provide brief introductions to each for better context.
+We'll start with a high-level overview to establish a foundational understanding before diving into more intricate details. Since this process involves multiple modules, I'll also provide brief introductions to each for better context.
 
 ![bootstrapping overview](./imgs/bootstrapping-overview.png)
 
@@ -841,7 +841,7 @@ In this implementation, the `LazyReferenceCollection` (LSE) first checks if the 
 1. **Missing `coveringPartialIndexValues`:** If the `coveringPartialIndexValues` parameter is absent, the LSE can't determine if the requested models were previously fetched from the server.
 2. **Absent partial index in the store:** If the `coveringPartialIndexValues` are not found in the partial store, a network hydration shall be necessary.
 
-Recall that when we discussed `ObjectStore`, we learned that for models with a `partial` load strategy, there exists a partial index store to track partial indices. This is the point at which the store comes into play. For example, if the `Comment` model’s partial index store contains two records, it means the LSE has previously attempted to load `Comment` objects using those indices, confirming that the corresponding comments were fetched from the server at some point. We will discuss when these partial indices get updated later.
+Recall that when we discussed `ObjectStore`, we learned that for models with a `partial` load strategy, there exists a partial index store to track partial indices. This is the point at which the store comes into play. For example, if the `Comment` model's partial index store contains two records, it means the LSE has previously attempted to load `Comment` objects using those indices, confirming that the corresponding comments were fetched from the server at some point. We will discuss when these partial indices get updated later.
 
 ![partial index stores](./imgs/partial-index-stores.png)
 
@@ -862,7 +862,7 @@ If no network hydration is necessary, LSE will query the IndexedDB by calling `g
 > - `Database` (`eg`)
 >   - `setPartialIndexValueForModel`
 
-`BatchModelLoader`, as the name suggests, batches multiple network hydration requests into a single GraphQL request. While we won’t dive into the details of how LSE deduplicates requests in this article (you can refer to the code, where I’ve added comments for clarity), the focus here will be on how LSE handles the batching process.
+`BatchModelLoader`, as the name suggests, batches multiple network hydration requests into a single GraphQL request. While we won't dive into the details of how LSE deduplicates requests in this article (you can refer to the code, where I've added comments for clarity), the focus here will be on how LSE handles the batching process.
 
 In the `BatchModelLoader.handleBatch` method, Linear divides requests into three categories:
 
@@ -906,7 +906,7 @@ _metadata_={"returnedModelsCount":{"Comment":1,"IssueHistory":5}}
 
 Does this response look familiar to you? Yes, it follows the same format used in full bootstrapping. Later, in handleLoadedModels, the response will be parsed, the models will be written to the database, and objects will be created in memory. Importantly, the partial index of the request will be **saved in the database**, so the next time LSE tries to hydrate the model, it will know that network hydration is unnecessary.
 
-You might wonder: _Why is `firstSyncId` included in the `/sync/patch` request parameters, but not `lastSyncId`? After all, `lastSyncId` is used to determine if the client is up to date with the latest data. Won't these models be updated?_ The answer lies in how LSE handles incremental changes (delta packets), which I’ll explain in Chapter 4. The basic idea is this: when a delta packet arrives, LSE checks which models are affected and haven't yet been loaded, and immediately loads those models. If lazy hydration completes after this process, LSE will not overwrite the existing models in memory. You can refer to `createModelsFromData` method for implementation details.
+You might wonder: _Why is `firstSyncId` included in the `/sync/patch` request parameters, but not `lastSyncId`? After all, `lastSyncId` is used to determine if the client is up to date with the latest data. Won't these models be updated?_ The answer lies in how LSE handles incremental changes (delta packets), which I'll explain in Chapter 4. The basic idea is this: when a delta packet arrives, LSE checks which models are affected and haven't yet been loaded, and immediately loads those models. If lazy hydration completes after this process, LSE will not overwrite the existing models in memory. You can refer to `createModelsFromData` method for implementation details.
 
 ---
 
@@ -947,14 +947,12 @@ As you can see from the request parameters, `modelClass` is mapped to the `onlyM
 
 ### Takeaway of Chapter 2
 
-<!-- TODO: use chatGPT to optimize my expressions from here. -->
-
 Let's sum up what we've learned in chapter 2:
 
 - LSE creates two types of databases:
   - A `linear_databases` database to store information about other databases.
   - A `linear_database_<id>` database to store models, metadata, and transactions for a specific workspace.
-- There are three bootstrapping types: full, partial, and local. We’ve discussed full bootstrapping in detail.
+- There are three bootstrapping types: full, partial, and local. We've discussed full bootstrapping in detail.
 - The sync ID is the global version number of the database. It helps determine whether the client is up to date with the latest data.
 - LSE can lazily hydrate models into memory, either from the server or the local database.
 
@@ -962,9 +960,9 @@ In the upcoming chapters, we'll explore how LSE synchronizes changes between cli
 
 ## Chapter 3: Transactions
 
-In the previous chapter, we explored how LSE loads existing models from the server. Now, we’ll shift our focus to how LSE synchronizes changes between clients and the server. Specifically, this chapter will examine how client-side changes are synced to the server.
+In the previous chapter, we explored how LSE loads existing models from the server. Now, we'll shift our focus to how LSE synchronizes changes between clients and the server. Specifically, this chapter will examine how client-side changes are synced to the server.
 
-Let’s start with a fundamental question: **What happens when we change the assignee of an Issue?** How does LSE handle networking, offline caching, observability, and other underlying complexities—all in just two lines of code?
+Let's start with a fundamental question: **What happens when we change the assignee of an Issue?** How does LSE handle networking, offline caching, observability, and other underlying complexities—all in just two lines of code?
 
 ```jsx
 issue.assignee = user;
@@ -1005,13 +1003,13 @@ In addition to `UpdateTransaction`, there are four other types of transactions, 
 > - `as.referencedPropertyChanged`: `ClientModel.referencedPropertyChanged`
 > - `as.updateReferencedModel`: `ClientModel.updateReferencedModel`
 
-As discussed in the [Observability](#observability-m1) section, LSE leverages the `M1` function to make model properties observable. Beyond enabling observability, `M1` also plays a critical role in transaction generation. Here’s how it works:
+As discussed in the [Observability](#observability-m1) section, LSE leverages the `M1` function to make model properties observable. Beyond enabling observability, `M1` also plays a critical role in transaction generation. Here's how it works:
 
 When a property of a model is assigned a new value, the setter intercepts the assignment, triggering `propertyChanged`, which then calls `markPropertyChanged` with the **property's name**, the **old value**, and the **new value**. Next, `markPropertyChanged` serializes the old value and stores it in `modifiedProperties`. This serialized data will later be used to generate a transaction.
 
 ![Modified Properties](./imgs/modified-properties.png)
 
-It’s important to note that **before `save()` is called, the model in memory is already updated**. Transactions **do not** update in-memory models—this happens immediately when a property is changed. However, transactions do play a key role in **undo** and **redo** operations, as well as in updating in-memory models. We’ll explore this in greater detail in **Chapter 5**.
+It's important to note that **before `save()` is called, the model in memory is already updated**. Transactions **do not** update in-memory models—this happens immediately when a property is changed. However, transactions do play a key role in **undo** and **redo** operations, as well as in updating in-memory models. We'll explore this in greater detail in **Chapter 5**.
 
 ### Generating an `UpdateTransaction`
 
@@ -1133,7 +1131,7 @@ The response contains `lastSyncId` for each mutating query.
 }
 ```
 
-This example might seem too simple because it only contains a single mutation query. Let’s look at a more complex example, such as creating a new `Project`. In this case, you can see clearly how LSE handles multiple transactions within a batch. The request would look like this:
+This example might seem too simple because it only contains a single mutation query. Let's look at a more complex example, such as creating a new `Project`. In this case, you can see clearly how LSE handles multiple transactions within a batch. The request would look like this:
 
 ```json
 {
@@ -1190,13 +1188,13 @@ If the server rejects the mutation query, `transactionCompleted` is still called
 > - `uce.loadPersistedTransactions`: `TransactionQueue.loadPersistedTransactions`
 > - `uce.confirmPersistedTransactions`: `TransactionQueue.confirmPersistedTransactions`
 
-In the previous chapters, we mentioned that when transactions are moved to `queuedTransactions`, they are stored into `__transactions` table as well for caching purposes. During this process, the `serialize` method of transactions would be called. Each type of transactions implements its own `serialize` method.
+In the previous chapters, we discussed that when transactions are moved to `queuedTransactions`, they are also stored in the `__transactions` table for caching purposes. During this process, the `serialize` method of transactions is called. Each type of transaction has its own implementation of this method.
 
-The next time Linear starts, cached transactions are loaded in `TransactionQueue.loadPersistedTransactions`, in which they will be deserialized. Similarly, each type of transactions also implements a static `fromSerializedData`, this method will replay the transaction add modify the models in memory. So we can restore the state of the client after a restart.
+When Linear starts again, cached transactions are loaded in `TransactionQueue.loadPersistedTransactions`, at which point they are deserialized. Similarly, each type of transaction also implements a static `fromSerializedData` method. This method **replays** the transaction and modifies the models in memory, effectively restoring the client's state after a restart.
 
-Finally, during the bootstrap process, `TransactionQueue.confirmPersistedTransactions` will be called to move these transactions to `createdTransactions`.
+Finally, during the bootstrap process, `TransactionQueue.confirmPersistedTransactions` is called to move these transactions to `createdTransactions`.
 
-There's a small chance that this process could lead to unintended issues. For instance, if the client sends a transaction to the server but the window closes before a response is received, the transaction will be stored in the `__transactions` table. When the client restarts, the transaction will be reloaded and sent to the server again. Since some transactions are not idempotent, users may encounter errors such as: "You can't delete a model that doesn't exist." While this is a rare occurrence and generally won't impact the user experience significantly, it’s worth noting. (In OT systems, this could cause more serious issues, which is why transactions or operations typically include an incremental counter for deduplication).
+There is a small chance that this process could lead to unintended issues. For example, if the client sends a transaction to the server but the window closes before receiving a response, the transaction will be stored in the `__transactions` table. When the client restarts, the transaction will be reloaded and sent to the server again. Since some transactions are not idempotent, users may encounter errors like: "You can't delete a model that doesn't exist." While this is a rare occurrence and generally doesn't significantly affect the user experience, it's something to be aware of. (In OT systems, this could result in more serious issues, which is why transactions or operations usually include an incremental counter to ensure deduplication).
 
 ### Takeaway of Chapter 3
 
@@ -1210,22 +1208,28 @@ Let's sum up this chapter.
 
 ## Chapter 4: Delta Packets
 
-In this chapter, we will look into how LSE handles incremental updates and keep the client up to date with the server.
+In this chapter, we will explore how LSE handles incremental updates and ensures that the client stays synchronized with the server.
 
-Let's start with an overview just like we did in the previous chapters!
+Let's begin with an overview, similar to what we did in the previous chapters!
 
 <!-- TODO: 画一个 overview 图 -->
 
-### Establish Connection
+1. At the end of the bootstrapping process, after the persisted transactions are loaded, the client establishes a WebSocket connection to the server to receive incremental updates, or delta packets.
+2. Handling delta packets involves several key tasks: updating models in memory and in the local database, rebasing transactions, and more.
 
-> [!NOTE] Code References
+### Establishing Connection
+
+> [!NOTE] 
+> Code References
 >
 > - `ng.startSyncing`: `SyncClient.startSyncing`
 > - `ng.constructor`: `SyncClient.constructor`
+> - `handshakeCallback` callback
 
-The last phrase of bootstrapping is connecting to the server using WebSocket for receiving incremental updates. In the `handshakeCallback` witch will be executed after the connection is established, the client will compare `lastSyncId` in the callback's parameters with local `lastSyncId` to see if the client misses incremental changes. If so, it will fetch missing delta packets from the server and then apply them.
 
-The parameters of the callback would be something like this:
+The final phase of bootstrapping involves establishing a WebSocket connection to the server to receive incremental updates after loading persisted transactions from the local database. In the `handshakeCallback`, which is executed once the connection is established, the client compares the `lastSyncId` from the callback's parameters with the local lastSyncId to determine whether any incremental changes have been **missed**. If a discrepancy is found, the client requests the missing delta packets from the server and applies them accordingly.
+
+The parameters of the callback would appear as follows:
 
 ```typescript
 {
@@ -1253,11 +1257,12 @@ The parameters of the callback would be something like this:
 }
 ```
 
-Also, the `SyncClient` module listens the `SyncMessage` channel of the WebSocket connection which will emits delta packets, and calls `applyDelta` to handle those delta packets.
+Additionally, the `SyncClient` module listens to the `SyncMessage` channel on the WebSocket connection, which emits delta packets. Upon receiving these packets, it invokes the `applyDelta` method to process and apply the updates.
 
 ### Applying Deltas
 
-> [!NOTE] Code References
+> [!NOTE]
+> Code References
 >
 > - `ng.applyDelta`: `SyncClient.applyDelta`
 > - `ng.constructor`: `SyncClient.constructor`
@@ -1265,9 +1270,7 @@ Also, the `SyncClient` module listens the `SyncMessage` channel of the WebSocket
 > - `zu.supportedPacket`: `DependentsLoader.supportedPacket`
 > - `uce.modelUpserted`: `TransactionQueue.modelUpserted`
 
-After a client sends a GraphQL mutating query to the server, the server will execute that query and generate a group of delta packets, and then broadcast them to all connected clients (including the one who sends the transaction).
-
-Each delta packet contain changes (described by the class `SyncAction`) happened on the server. For example, if the assignee of an `Issue` is changed, a client will receive delta packets like this:
+After a client sends a GraphQL mutation to the server, the server executes the query and generates a set of delta packets, which are then broadcast to all connected clients, **including the client that initiated the mutation**. Each delta packet contains the changes, or **sync actions**, that occurred on the server. For example, if the assignee of an `Issue` is changed, the client will receive delta packets like the following:
 
 ```jsx
 [
@@ -1336,101 +1339,126 @@ Each delta packet contain changes (described by the class `SyncAction`) happened
 ];
 ```
 
-You can see clearly in the example above that each action has an integer `id` field, which, is the `lastSyncId` associated with this sync action. And the `id` of the third sync action is 28 larger than the `id` of the second sync action which, again, indicates that the `lastSyncId` is not by workspace but the whole database.
+As shown in the example above, each action includes an integer `id` field, which corresponds to the sync ID associated with the sync action. (Note that the `id` of the third sync action is 28 greater than the `id` of the second sync action, indicating that the `lastSyncId` is tied to the entire database, not just the workspace.)
 
-Actions have `action` type. All possible types are:
+Each action also has an `action` type. The possible types are as follows:
 
-1. `I` for insertion
-2. `U` for updating
-   3 `A` for archive
-3. `D` for deletion
-4. `C` for covering
-5. `G` for changing sync groups
-6. `S` for changing sync groups, (it is a pity that I haven't figure out its differences with `G`)
-7. `V` for unarchive
+1. `I` - Insertion
+2. `U` - Update
+3. `A` - Archiving
+4. `D` - Deletion
+5. `C` - Covering
+6. `G` - Changing sync groups
+7. `S` - Changing sync groups (though the distinction from `G` remains unclear)
+8. `V` - Unarchiving
 
-`ng.applyDelta` is responsible for handling these sync actions. It does the following things (refer to the source for implementation details):
+The `ng.applyDelta` method is responsible for handling these sync actions. It performs the following tasks (refer to the source for implementation details):
 
-1. **Figure out if the user is added to or removed from sync groups**. If the user is added to a sync group, LSE will send a network request (indeed a partial bootstrapping) for models of that sync group. LSE will wait for the response before continue processing the sync actions.
-2. Load dependents of these actions.
+Here's a refined version of your points:
 
----
+1. **Determine whether the user is added to or removed from sync groups**. If the user is added to a sync group, LSE triggers a network request (essentially a partial bootstrapping) to fetch models associated with that sync group. LSE will wait for the response before continuing to process the sync actions.
 
-%% TODO: 实地看一下 transient 里面存储的都是什么东西 %%
-
----
-
-3. Write data of the new sync groups and dependents into the local database.
-4. Loop through all sync actions and resolve them to update the local database.
-
-In this step, LSE will call `TransactionQueue.modelUpserted` to remove local `CreationTransaction`s that are not valid after the sync actions. If the `CreationTransaction`'s UUID is same with the model's ID, the transaction should be cancelled. Its intention is obviously avoid UUID confliction since the UUID is generated on the client side. Also, if user leaves a sync group, models of that sync group will be removed as well.
-
-5. Loop all sync actions again to change in-memory data.
+2. **Load dependencies of specific actions**.
 
 ---
 
-In fact, in this step, LSE loops sync actions twice.
+> [!NOTE]  
+> **Code References**
+> - `ng.applyDelta`: `SyncClient.applyDelta`
+> - `Zu.supportedPacket`: `DependentsLoader.supportedPacket`
 
-The first loop will prepare models to perform the sync actions. 95. For actions whose types are "I" "V" or "U", LSE creates corresponding model instances. 96. For actions whose types are "A", LSE updates the models' properties.
+The next step is to load references for certain models involved in the sync actions. For instance, if the child issues of an `Issue` are modified, LSE needs to load these child issues. Why? The answer lies in the `DependentsLoader.supportedPacket`. This method identifies which sync actions require loading of dependent models.
 
-And then LSE will attach references for newly created models. But before that, LSE will first check if the newly created model are deleted by sync action in the same delta packet to avoid performing unnecessary works. It achieves that by comparing the `syncId`s of the action creating the model and the action deleting this model. If deleting action's `syncId` is larger, the model shall not be created.
+The sync actions must meet the following conditions to be loaded:
 
-The second loop will handle sync actions one by one.
+- They should **not** be of type "I", "A", or "D".
+- The model they manipulate must be either an `Issue` or a `Project`, and it must be used for partial indexes, which applies to both `Issue` and `Project`.
+- The action type should be "V", or its associated model should have references that have changed, with LSE already storing the partial index keys of these changed references. (This is a bit tricky. I will do my best to explain it, but the most effective way to understand this is by reviewing the source code.)
 
-For actions of type "I", "V", "U" and "C", LSE will **rebase** `UpdateTransactions` onto them.
+First, LSE retrieves the **transient partial indexed keys** of the model. These are the Cartesian product of the model's partial indexes and its dependencies. For example, `Issue` has transient partial indexed keys like this:
 
-> [!NOTE] Code References
->
+![](./imgs/transient-partial-index-keys.png)
+
+These keys represent the Cartesian product of its 9 partial indexes and 17 dependencies.
+
+Next, LSE checks whether any references in the model have changed. If they have, it will generate a new partial index value for the updated references.
+
+Finally, LSE checks if the new partial index value is already stored in the local database. If so, it means the dependents of the model need to be updated because the partial index value now points to a new dependent model.
+
+---
+
+3. **Write data for the new sync groups and their dependents into the local database.**
+
+4. **Loop through all sync actions and resolve them to update the local database.**
+
+In this step, LSE calls `TransactionQueue.modelUpserted` to remove local `CreationTransaction`s that are no longer valid after the sync actions. If the `CreationTransaction`'s UUID matches the model's ID, the transaction is canceled. This step ensures that UUID conflicts are avoided, as the UUID is generated on the client side. Additionally, if a user leaves a sync group, the models associated with that group are also removed.
+
+As mentioned in the previous chapter, LSE will not modify the local database until the server confirms the changes.
+
+5. **Loop through all sync actions again to update in-memory data.**
+
+--
+
+In this step, LSE loops through the sync actions twice.
+
+The first loop prepares models to perform the sync actions:
+
+- For actions of type "I", "V", or "U", LSE creates corresponding model instances.
+- For actions of type "A", LSE updates the models' properties.
+
+Next, LSE attaches references to the newly created models. However, before doing so, LSE checks if the newly created model has been deleted by a sync action in the same delta packet, in order to avoid unnecessary operations. It does this by comparing the `syncId`s of the action that created the model and the action that deletes it. If the `syncId` of the deleting action is larger, the model will not be created.
+
+The second loop handles sync actions one by one.
+
+For actions of type "I", "V", "U", and "C", LSE will **rebase** `UpdateTransactions` onto them.
+
+> [!NOTE]  
+> **Code References**
 > - `ng.applyDelta`: `SyncClient.applyDelta`
 > - `uce.rebaseTransactions`: `SyncActionStore.addSyncPacket`
 > - `zu.rebase`: `UpdateTransaction.rebase`
 
-When applying a sync action, conflicts can arise with local transactions. For example, imagine your colleague changes the assignee to Alice, while you simultaneously change the assignee to Bob. The server processes your colleague's update first, so according to the "last-writer-wins" principle, the assignee on the server ends up as Bob.
+When applying a sync action, conflicts can arise with local transactions. For example, imagine your colleague changes the assignee to Alice, while you simultaneously change the assignee to Bob. The server processes your colleague's update first, so, according to the "last-writer-wins" principle, the assignee on the server ends up as Bob.
 
-Here's what happens on your client: you create an `UpdateTransaction` to change the assignee, but before this transaction is executed by the server, your client receives a delta packet, updating the assignee to Alice. At this point, LSE needs to perform a rebasing, because, following the "last-writer-wins" principle, the in-memory model needs to be reverted back to Bob.
+Here's what happens on your client: you create an `UpdateTransaction` to change the assignee, but before the transaction is executed by the server, your client receives a delta packet that updates the assignee to Alice. At this point, LSE needs to perform a rebasing. Following the "last-writer-wins" principle, the in-memory model must be reverted to Bob.
 
-This rebasing occurs in the `rebaseTransactions` method, where all `UpdateTransaction` objects in the queue call the `rebase` method. The `original` value of each transaction is updated to reflect the value from the delta packet (in this case, Alice), and the in-memory model is reset to Bob. Fairly speaking, it is very similar to OT!
+This rebasing occurs in the `rebaseTransactions` method, where all `UpdateTransaction` objects in the queue call the `rebase` method. The `original` value of each transaction is updated to reflect the value from the delta packet (in this case, Alice), and the in-memory model is reset to Bob. It is similar to Operational Transformation (OT).
+
+Remember the `completedButUnsyncedTransactions` queue we discussed in the previous chapter? During rebasing, LSE checks if any transactions in this queue have a `syncIdNeededForCompletion` smaller than or equal to the `lastSyncId` of the delta packet. If so, these transactions are removed from the `completedButUnsyncedTransactions` queue.
 
 ---
 
-7. Update `lastSyncId` of the client, update `firstSyncId` if sync groups change.
-8. Completed transactions waiting for this `lastSyncId`.
+6. **Update `lastSyncId` on the client, and update `firstSyncId` if sync groups change.**
+
+7. **Resolve completed transactions waiting for the `lastSyncId`.**
+
+After receiving the delta packets, the client checks if any transactions are waiting for the `lastSyncId` of those packets. If such transactions exist, they will be resolved, as shown here:
 
 ```typescript
-this.syncWaitQueue.progressQueue(this.lastSyncId), // If some transactions are waiting for a lastSyncId to complete, complete them.
+this.syncWaitQueue.progressQueue(this.lastSyncId); 
 ```
 
-### Server-side side effects
-
-If we take a closer look at the `UpdateTransaction` and the corresponding delta packets, it's clear that the delta packets carry more data than the transaction itself—specifically, an `IssueHistory` of the assignee change. Unlike OT, where the server mainly handles operation transformations, validates permissions, and executes operations to maintain a single source of truth, LSE's backend involves a lot of business logic in addition to these tasks.
-
-### How to Know If The Client is Missing Delta Packets?
-
-That is an important question! And should the delta packet's of the same sync groups should be applied in a sequence?
-
-<!-- TODO: 这一部分内容需要扩写一下 -->
+It's important to note that LSE performs all the above steps inside a `updateLock.runExclusive` callback. This ensures that LSE waits for a delta packet to be fully processed before processing the next one, maintaining consistency between the client's state and the server's.
 
 ### Takeaway of Chapter 4
 
-<!--
-Secondly, unlike OT, which only sends an acknowledgment signal to the mutator, **LSE (Last-Server-Executed) sends all modified model properties to all connected clients, even if the client making the modification is not the mutator.** This simplifies the management of WebSocket connections. -->
+Here's an optimized version of your chapter summary for improved clarity and structure:
 
-<!-- Lastly, LSE employs a simple **Last-Writer-Wins strategy to resolve conflicts** and only addresses conflicts in `InsertionTransaction` and `UpdateTransaction`. -->
+**LSE uses delta packets to keep the client synchronized with the server.** When a client sends a mutation to the server, the server processes the mutation and generates delta packets. These packets are broadcast to all connected clients, containing the changes that occurred on the server. The client then applies these changes to its in-memory models.
+
+Looking closer at the `UpdateTransaction` and the corresponding delta packets, we see that the delta packets carry more data than the transaction itself—specifically, an `IssueHistory` of the assignee change. Unlike Operational Transformation (OT), where the server primarily handles operation transformations, validates permissions, and executes operations to maintain a single source of truth, LSE's backend involves additional business logic alongside these tasks.
+
+In contrast to OT, which only sends an acknowledgment to the mutator, **LSE sends all modified model properties to all connected clients, even if the client making the modification is not the mutator.** This approach simplifies the management of WebSocket connections.
+
+Finally, LSE employs a simple **Last-Writer-Wins** strategy to resolve conflicts, specifically addressing conflicts in `UpdateTransaction` only.
 
 ## Chapter 5: Misc
 
 ### Undo & Redo
 
-> [!NOTE]
-> Please refer to the following functions:
->
-> - `zu.undoTransaction`: `UpdateTransaction.undoTransaction`
-> - `jce.addOperation`: `UndoQueue.addOperation`
-> - `jce.undo`: `UndoQueue.undo`
+Undos and redos in LSE are transaction-based. Each transaction type includes a specific `undoTransaction` method, which performs the undo logic and returns another transaction for redo purposes. For example, the `undoTransaction` method of an `UpdateTransaction` reverts the model's property to its previous value and returns another `UpdateTransaction` to the `UndoQueue`. It's important to note that when a transaction executes its undo logic, a new transaction is created and added to the `queuedTransactions` to ensure proper synchronization.
 
-Undos and redos in LSE are based on transactions. Each transaction type includes a specific `undoTransaction` method, which executes the undo logic and returns another transaction for redo purposes. For example, the `undoTransaction` method of an `UpdateTransaction` reverts the model's property to its previous value and returns another `UpdateTransaction` to the `UndoQueue`. It's important to note that when a transaction executes its undo logic, a new transaction is created and added to the `queuedTransactions` to ensure proper synchronization.
-
-But how does the `UndoManager` determine which transactions should be appended to the undo/redo stack? The answer lies in Linear's UI logic, which is responsible for identifying differences.
+But how does the `UndoManager` determine which transactions should be appended to the undo/redo stack? The answer lies in Linear's UI logic, which identifies the differences:
 
 ```jsx
 n.title !== d &&
@@ -1449,33 +1477,29 @@ n.title !== d &&
   );
 ```
 
-When an edit is made, the UI calls `UndoQueue.addOperation`, which allows the `UndoQueue` to subscribe to the next `transactionQueuedSignal` and create an undo item. This signal is emitted when transactions are added to `queuedTransactions`. The subscription ends when the callback finishes execution, at which point `save()` is called, and any transactions created in `save()` are pushed to the undo/redo stack. However, when an undo operation is performed, although the signal is triggered, no additional undo item is created because `UndoQueue` is not actively listening during that time.
+When an edit is made, the UI calls `UndoQueue.addOperation`, allowing the `UndoQueue` to subscribe to the next `transactionQueuedSignal` and create an undo item. This signal is emitted when transactions are added to `queuedTransactions`. The subscription ends once the callback finishes execution, at which point `save()` is called, and any transactions created in `save()` are pushed to the undo/redo stack. 
 
-When performing undo, `undoTransaction` will return a correpsoding transaction for redo purposes.
+However, when an undo operation is performed, although the signal is triggered, no additional undo item is created, because `UndoQueue` is not actively listening during that time.
 
-This raises an interesting question: while a transaction can perform "undo" and "redo" transactions on the client, **could Linear redo transactions cached in the local database when the application starts in order to provide a better offline experience?**
-
-### Permissions
-
-### The Server's Role
+When performing an undo, the `undoTransaction` method returns the corresponding transaction for redo purposes.
 
 ## Conclusion
 
-%% TODO 为什么在这里提到了 SyncActionStore? %%
+I'm so glad we've come this far in our journey exploring the Linear Sync Engine! In this post, we've covered a wide range of topics:
 
-_Here it becomes clear that SyncActionStore plays an important of role of syncing models!_ As
+1. **Model Definition**: LSE uses decorators to define models, properties, and references. The metadata for these models is stored in the `ModelRegistry` class and is widely utilized across LSE.
+2. **Observability**: LSE leverages MobX to make models observable, enabling it to track changes to models and properties and generate transactions accordingly. Decorators are used to add observability.
+3. **Bootstrapping**: LSE supports three types of bootstrapping, and we've gone into detail on full bootstrapping.
+4. **Lazy Loading**: LSE hydrates lazily-loaded data as needed. We explored how partial indexes and sync groups are used to manage this process.
+5. **Syncing**: LSE uses transactions to synchronize clients with the server. We've discussed how transactions are generated, queued, and sent to the server, as well as how LSE handles cache, rebasing, conflict resolution, and more.
+6. **Undo and Redo**: LSE supports undo and redo operations based on transactions.
 
-SyncActionStore 实际上存储了所有被删除以及 removal 的数据的记录。
+I hope you now have a clearer understanding of how the Linear Sync Engine operates. While I've tried to cover as much as possible, there are still some topics left to explore. If you're interested in diving deeper, here are some recommendations for further reading:
 
-No pagination?
+1. **Other Transaction Types**: We've looked at `UpdateTransaction`, but LSE also supports other types such as `CreateTransaction`, `DeleteTransaction`, and `ArchiveTransaction`. How do these work, and how do metadata fields like `onDelete` and `onArchive` affect transactions?
+2. **Other Bootstrapping Types**: We focused on full bootstrapping, but LSE also supports partial bootstrapping and local bootstrapping. How do these differ from full bootstrapping, and when are they used?
 
-TransientRemoval
-
-I will compare the LSE's approach with OT so have a better understanding of how it works.
-
-We've learned quiet a lot about how LSE works, but there are still some topics that are not covered in this post. Here are some of them:
-
-If you're interested in learning more about these topics, please let me know in the Issues. And I strongly recommend you to share your thoughts, questions and findings in the Issues as well. I'm looking forward to hearing from you!
+I highly encourage you to share your thoughts, questions, and findings in the Issues. I look forward to hearing from you!
 
 ## Appendix A: Actions and Computed Values
 
@@ -1506,14 +1530,3 @@ class Issue {
 ```
 
 **Action** and **computed** are core MobX primitives. During bootstrapping, these properties are made observable by directly calling MobX's `makeObservable` API.
-
----
-
-3. **`persistence`**: Indicates how the property should be stored in the database. Options include `none`, `createOnly`, `updateOnly`, and `createAndUpdate`.
-4. **`referenceOptional`**: Its distinction from `referenceNullable` is unclear.
-5. **`referenceNullable`**: Its function is unknown.
-6. **`referencedClassResolver`**: A function that returns the constructor of the referenced model.
-7. **`referencedProperty`**: If the referenced model has a property that references back, this specifies the name of that property.
-8. **`cascadeHydration`**: Indicates whether referenced models should be hydrated in a cascading manner.
-9. **`onDelete`**: Defines how to handle the referenced model when the model is deleted. Options include `CASCADE`, `NO ACTION`, `SET NULL`, and `REMOVE AND CASCADE WHEN EMPTY`.
-10. **`onArchive`**: Specifies how to handle the referenced model when the model is archived.

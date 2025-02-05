@@ -71,7 +71,7 @@ function Ej() {
         return this.filter((t,e,n)=>n.indexOf(t) === e)
     }
     ,
-    Array.prototype.concrete = function() {
+    Array.prototype.concrete = function() { // remove undefined values from an array
         return this.filter(t=>t !== void 0)
     }
     ,
@@ -7198,7 +7198,8 @@ const rr = class rr {
         }
         return this.observableAnnotationsLookup[e]
     }
-    static dependenciesOfModel(e) { // name of the dependent on model
+    static dependenciesOfModel(e) { // The method will return models that references e.
+        // for name of the model
         var n;
         // model dependencies are gathered the first time this function get called.
         if (!this.modelDependencyLookup[e]) {
@@ -7960,12 +7961,13 @@ const Ku = class Ku { // PartialIndexHelper
         if (!this.transientPartialIndexedKeys[e]) {
             if (!Me.getModelClass(e))
                 return [];
+            // Issue has 9 partial indexes info.
             const r = this.partialIndexInfoForModel(e).map(s=>s.path);
             if (r.length === 0)
                 this.transientPartialIndexedKeys[e] = [];
             else {
+                // And Issue has 13 dependencies.
                 const i = Me.dependenciesOfModel(e).filter(a=>a.model.isPartiallyLoaded);
-                // What is flat map here?
                 i.length === 0 ? this.transientPartialIndexedKeys[e] = [] : this.transientPartialIndexedKeys[e] = i.flatMap(
                     a => r.map(o=>({
                     dependency: a,
@@ -7973,6 +7975,7 @@ const Ku = class Ku { // PartialIndexHelper
                 })))
             }
         }
+        // So there will be 117 items for Issue!
         return this.transientPartialIndexedKeys[e]
     }
     static partialIndexInfoForModel(e, n) {
@@ -80434,8 +80437,9 @@ const eg = class eg { // class: Database
             firstSyncId: this.metadata.firstSyncId
         });
         let s;
-        return this.database && (s = await this.getRemovedModelIds(e, r.lastSyncId)),
-        r.data.filter(i=>!(s != null && s.has(i.id || ""))) // Filter models that not removed since.
+        return this.database && (s = await this.getRemovedModelIds(e, r.lastSyncId)), // Check if the partial model
+        // is removed by sync actions. If so, it should not load those.
+        r.data.filter(i=>!(s != null && s.has(i.id || "")))
     }
     async hasModelsForPartialIndexValues(e, n, r) {
         return this.database !== void 0 && this.storeManager.objectStore(e).hasModelsForPartialIndexValues(this.database, n, r)
@@ -82057,17 +82061,17 @@ class PE { // BatchedRequest
             return Array.isArray(n) ? n : [n]
     }
 }
-class Zu extends PE { // DependentsLoader
-    static async supportedPacket(e, n) {
-        // s for the sync actions that requires to load dependents
+class Zu extends PE { // DependentsLoader extends BatchLoader
+    static async supportedPacket(e, n) { 
         const r = ["I", "A", "D"]
           , s = n.filter(o=>{
             var l;
-            return "modelName"in o 
-                && bce.includes(o.modelName) // Only for Issue & Project
+            return "modelName"in o // The sync action must be associated with a model. "G" & "S" actions excluded.
+                && bce.includes(o.modelName) // Only works for Issue & Project.
                 && (o.action === "V" ||  // If it is an unarchive action. Or
-                        !r.includes(o.action) && // 1. It is not a I, A, nor D action. // Insertion, arhiving or deletion.
-                        o.data && // 2. And its `useForPartialIndexes` data field is true. It holds true for Issue & Project.
+                        !r.includes(o.action) && // It is not a I, A, nor D action. // Insertion, arhiving or deletion.
+                        // And let leaves us U, C, G, S. 
+                        o.data && // The model's `useForPartialIndexes` data field is true. This holds true for both Issue and Project model.
                         ((l = Me.getModelClass(o.modelName)) == null ? void 0 : l.usedForPartialIndexes)
                 )
         }
@@ -82076,16 +82080,25 @@ class Zu extends PE { // DependentsLoader
           , a = gm(s, 100); // 100 actions in a batch
         for (const o of a) {
             const l = await Promise.all(o.map(async d=>{
-                if (d.action === "V")
+                // d for a sync action
+                if (d.action === "V") // If the sync action is an unarchiving action, we should load the model's dependnecies!
                     return d;
-                // TODO: what is transient partial index
+                // That leaves us "U" and "C" here.
+                // The next is to find trasient partial indexed keys of that model.
+                // Transient partial indexed keys are Cartesian product 
+                // of partial indexes of the model and dependencies of this model
                 const u = Zn.transientPartialIndexedKeysOfModel(d.modelName);
                 if (u.length === 0)
                     return;
                 const h = await e.getModelDataById(d.modelName, d.modelId, {
-                    onlyIfLocallyAvailable: !0
+                    onlyIfLocallyAvailable: !0 // true
                 })
+                    // Find out what references changes and get the reference's model name and the partial index.
                   , f = u.map(({indexedKey: m, dependency: g})=>{
+                    // Let's simply this if expression
+                    // if (h && d.data[m] && ((h == null ? void 0 : h[m]) ?? void 0) !== (d.data[m] ?? void 0))
+                    // if (h && d.data[m] && d.data[m] !== h[m])
+                    // Means if the direct references changes by the sync action.
                     if (!(!h || !d.data[m] || ((h == null ? void 0 : h[m]) ?? void 0) === (d.data[m] ?? void 0)))
                         return {
                             modelName: g.model.modelName,
@@ -82097,9 +82110,10 @@ class Zu extends PE { // DependentsLoader
                     return;
                 if ((await Promise.all(
                     f.map(async m=>e.objectStoreReady(m.modelName) === !0 
-                        ? !1 
+                        ? !1 // If the dependency's store is ready, of course we don't need to perform a network loading
+                        // Otherwise we would check if the partial index are in the database.
                         : await e.hasModelsForPartialIndexValues(m.modelName, [m.newPartialIndex])
-                    ))).some(m=>m))
+                    ))).some(m=>m)) // If there are partial index in the database, it means the partial index are now outdated!
                     return d
             }
             ));
@@ -82120,6 +82134,7 @@ class Zu extends PE { // DependentsLoader
         const n = m5(e.map(s=>s.request), s=>s.modelName)
           , r = [];
         await Promise.all(Object.entries(n).map(async([s,i])=>{
+            // Load dependents of models.
             const a = await this.graphQLClient.restModelsJsonStream("/sync/dependents", {
                 retry: {
                     times: this.retries,
@@ -82131,7 +82146,7 @@ class Zu extends PE { // DependentsLoader
                     modelName: s,
                     identifiers: i.map(d=>d.identifier),
                     firstSyncId: this.graphQLClient.getFirstSyncId(),
-                    includeDependent: this.includeDependent
+                    includeDependent: this.includeDependent // Include dependents here.
                 })
             })
               , o = a.syncActions || []
@@ -82694,7 +82709,7 @@ const vce = be.MINUTE * 2
                 const C = a.syncDeltaPackets.filter(b=>b.action !== "S");
                 await this.applyDelta(C, a.lastSyncId, !0)
             }
-            // Demo logic. Omit this.
+            // Demo logic.
             if (hs)
                 return {
                     success: !0,
@@ -82707,10 +82722,13 @@ const vce = be.MINUTE * 2
             return (g || (d = a.syncDeltaPackets) != null && d.length) && (Hi.addStartupSpanTag("waitingForDelta", !0),
             Jn.increment("bootstrap.waiting.delta")),
             !m && g ? (await this.database.flush(),
-            await this.startSyncing(a.type), // Start syncing incremental updates with the server.
+            // Start syncing incremental updates with the server.
+            await this.startSyncing(a.type),
             this.transactionQueue.confirmPersistedTransactions()) : (this._shouldResetOnError = a.type === Ra.partial,
             X0.onLoadingDone.subscribeOnce(async()=>{
-                await this.database.flush(), // For a full bootstrapping, only flush the database when onLoadingDone is triggered.
+                // For a full bootstrapping, only flush the database when onLoadingDone is triggered.
+                await this.database.flush(), 
+                // Start syncing.
                 await this.startSyncing(a.type),
                 this.transactionQueue.confirmPersistedTransactions(),
                 this._shouldResetOnError = !1
@@ -83074,10 +83092,9 @@ const vce = be.MINUTE * 2
                 syncId: l // lastSyncId
             } = await this.loadDeltaNewSyncGroupsModels(e);
 
-            // Step 2. To apply some delta packets, models must be loaded into the memory. So LSE will
-            // immediately load the models.
+            // Step 2. For some sync actions, LSE will load their dependency models immediately.
             let d = []; // dependents models
-            const u = await Zu.supportedPacket(this.database, e);
+            const u = await Zu.supportedPacket(this.database, e); // u is an array of sync action that should load its dependencies
             if (u.length > 0) {
                 const f = new Zu(this.graphQLClient,!1,3) // Not include dependent and max retry for 3 times.
                   , p = f.allProcessedResult();
