@@ -1,4 +1,4 @@
-# A Reverse Study of Linear Sync Engine
+# Reverse Engineering Linear's Sync Engine: A Detailed Study
 
 > [!IMPORTANT]
 > Check out the [SUMMARY](./SUMMARY.md)
