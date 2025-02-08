@@ -1,4 +1,4 @@
-# Summary (WIP)
+# Summary
 
 This is a summary of the reverse-engineering of Linear's Sync Engine (LSE). It provides a conceptional description of how LSE works and would be a good starting point for understanding the source code.
 
@@ -117,11 +117,15 @@ This concept is crucial in LSE. While all workspaces share the same `lastSyncId`
 
 Linear does not loading everything from the server at once during a full bootstrapping, nor loading everything to the memory during each bootstrapping. It supports lazy hydration, which means that only the necessary data is loaded into memory when needed. This mechanism is particularly useful for improving performance and reducing memory usage.
 
+Classes with a `hydrate` method can be hydrated, such as `Model`, `LazyReferenceCollection`, `LazyReference`, `RequestCollection`, and `LazyBackReference`, among others.
 
+LSE will different approaches such as **partial indexes** and **sync groups** as keys to load lazy models.
 
 ## Syncing
 
 ### Transactions
+
+LSE clients send transactions to the server to perform operations on models. Here I will give a brief overview of how transactions work in LSE, using `UpdatingTransactions` as an example:
 
 ![](./imgs/transaction-overview.png)
 
@@ -132,6 +136,20 @@ Linear does not loading everything from the server at once during a full bootstr
 5. Once a batch is successfully processed by the backend, it is removed from the `__transactions` table in IndexedDB. The Local Storage Engine (LSE) then clears the cached batch.
 6. Transactions will wait for delta packets containing the `lastSyncId` to complete before proceeding.
 
+Transactions provide the following good features:
+
+1. It can be cached. So if the client loses connection and closes, the transactions can be resent when the client reconnects.
+2. It can be undone and redone, and it can be reverted on the client so client can handle server rejections smoothly.
+3. It can resolve conflicts with a **last-writer-win** manner.
+
 ### Delta Packets & Sync Actions
 
-LSE will create a WebSocket connection 
+LSE will create a WebSocket connection to the server to receive delta packets, and performing the following tasks when receiving delta packets.
+
+1. **Determine whether the user is added to or removed from sync groups**.
+2. **Load dependencies of specific actions**.
+3. **Write data for the new sync groups and their dependents into the local database.**
+4. **Loop through all sync actions and resolve them to update the local database.**
+5. **Loop through all sync actions again to update in-memory data.**
+6. **Update `lastSyncId` on the client, and update `firstSyncId` if sync groups change.**
+7. **Resolve completed transactions waiting for the `lastSyncId`.**
