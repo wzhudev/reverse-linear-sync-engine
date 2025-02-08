@@ -1,6 +1,6 @@
 # Summary
 
-This is a summary of the reverse-engineering of Linear's Sync Engine (LSE). It provides a conceptional description of how LSE works and would be a good starting point for understanding the source code.
+This summary covers the reverse-engineering study of Linear's Sync Engine (LSE). It provides a conceptual overview of how LSE works and serves as a good starting point for understanding the source code.
 
 ## Introduction
 
@@ -109,23 +109,23 @@ When a transaction is successfully executed by the server, the global **`lastSyn
 
 ![](./imgs/lastsyncid.png)
 
+To some extent, LSE leans more towards OT (Operational Transformation) rather than CRDT (Conflict-Free Replicated Data Types), because it requires a central server to arrange the order of transactions.
+
 ### SyncGroup
 
 This concept is crucial in LSE. While all workspaces share the same `lastSyncId` counter, you cannot access issues or receive delta packets from workspaces or teams to which you lack proper permissions. This restriction is enforced through an access control mechanism, with `subscribedSyncGroups` serving as the key component. The `subscribedSyncGroups` array contains UUIDs that represent your user ID, the teams you belong to, and predefined roles.
 
 ### Lazy Hydration
 
-Linear does not loading everything from the server at once during a full bootstrapping, nor loading everything to the memory during each bootstrapping. It supports lazy hydration, which means that only the necessary data is loaded into memory when needed. This mechanism is particularly useful for improving performance and reducing memory usage.
+Linear does not load everything from the server at once during full bootstrapping, nor does it load everything into memory each time. Instead, it supports **lazy hydration**, meaning only the necessary data is loaded into memory when needed. This approach improves performance and reduces memory usage.  
 
-Classes with a `hydrate` method can be hydrated, such as `Model`, `LazyReferenceCollection`, `LazyReference`, `RequestCollection`, and `LazyBackReference`, among others.
+Classes with a `hydrate` method, such as `Model`, `LazyReferenceCollection`, `LazyReference`, `RequestCollection`, and `LazyBackReference`, can be hydrated.  
 
-LSE will different approaches such as **partial indexes** and **sync groups** as keys to load lazy models.
+LSE uses different approaches, including **partial indexes** and **sync groups**, as keys to load lazy models.  
 
 ## Syncing
 
-### Transactions
-
-LSE clients send transactions to the server to perform operations on models. Here I will give a brief overview of how transactions work in LSE, using `UpdatingTransactions` as an example:
+LSE clients send transactions to the server to perform operations on models. Below is a brief overview of how transactions work in LSE, using `UpdatingTransactions` as an example:
 
 ![](./imgs/transaction-overview.png)
 
@@ -136,20 +136,18 @@ LSE clients send transactions to the server to perform operations on models. Her
 5. Once a batch is successfully processed by the backend, it is removed from the `__transactions` table in IndexedDB. The Local Storage Engine (LSE) then clears the cached batch.
 6. Transactions will wait for delta packets containing the `lastSyncId` to complete before proceeding.
 
-Transactions provide the following good features:
+Transactions offer the following key features:  
 
-1. It can be cached. So if the client loses connection and closes, the transactions can be resent when the client reconnects.
-2. It can be undone and redone, and it can be reverted on the client so client can handle server rejections smoothly.
-3. It can resolve conflicts with a **last-writer-win** manner.
-
-### Delta Packets & Sync Actions
+1. **Caching** – If the client disconnects or closes, transactions can be resent upon reconnection.  
+2. **Undo & Redo** – Transactions can be undone, redone, and reverted on the client side, allowing smooth handling of server rejections.  
+3. **Conflict Resolution** – Uses a **last-writer-wins** strategy to resolve conflicts.  
 
 LSE will create a WebSocket connection to the server to receive delta packets, and performing the following tasks when receiving delta packets.
 
-1. **Determine whether the user is added to or removed from sync groups**.
-2. **Load dependencies of specific actions**.
-3. **Write data for the new sync groups and their dependents into the local database.**
-4. **Loop through all sync actions and resolve them to update the local database.**
-5. **Loop through all sync actions again to update in-memory data.**
-6. **Update `lastSyncId` on the client, and update `firstSyncId` if sync groups change.**
-7. **Resolve completed transactions waiting for the `lastSyncId`.**
+1. Determine whether the user is added to or removed from sync groups.
+2. Load dependencies of specific actions.
+3. Write data for the new sync groups and their dependents into the local database.
+4. Loop through all sync actions and resolve them to update the local database.
+5. Loop through all sync actions again to update in-memory data.
+6. Update `lastSyncId` on the client, and update `firstSyncId` if sync groups change.
+7. Resolve completed transactions waiting for the `lastSyncId`.

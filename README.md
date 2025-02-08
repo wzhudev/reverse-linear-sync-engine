@@ -1363,9 +1363,9 @@ The `ng.applyDelta` method is responsible for handling these sync actions. It pe
 
 Here's a refined version of your points:
 
-1. **Determine whether the user is added to or removed from sync groups**. If the user is added to a sync group, LSE triggers a network request (essentially a partial bootstrapping) to fetch models associated with that sync group. LSE will wait for the response before continuing to process the sync actions.
+1. Determine whether the user is added to or removed from sync groups. If the user is added to a sync group, LSE triggers a network request (essentially a partial bootstrapping) to fetch models associated with that sync group. LSE will wait for the response before continuing to process the sync actions.
 
-2. **Load dependencies of specific actions**.
+2. Load dependencies of specific actions.
 
 ---
 
@@ -1394,15 +1394,15 @@ Finally, LSE checks if the new partial index value is already stored in the loca
 
 ---
 
-3. **Write data for the new sync groups and their dependents into the local database.**
+3. Write data for the new sync groups and their dependents into the local database.
 
-4. **Loop through all sync actions and resolve them to update the local database.**
+4. Loop through all sync actions and resolve them to update the local database.
 
 In this step, LSE calls `TransactionQueue.modelUpserted` to remove local `CreationTransaction`s that are no longer valid after the sync actions. If the `CreationTransaction`'s UUID matches the model's ID, the transaction is canceled. This step ensures that UUID conflicts are avoided, as the UUID is generated on the client side. Additionally, if a user leaves a sync group, the models associated with that group are also removed.
 
 As mentioned in the previous chapter, LSE will not modify the local database until the server confirms the changes.
 
-5. **Loop through all sync actions again to update in-memory data.**
+5. Loop through all sync actions again to update in-memory data.
 
 ---
 
@@ -1435,9 +1435,9 @@ Remember the `completedButUnsyncedTransactions` queue we discussed in the previo
 
 ---
 
-6. **Update `lastSyncId` on the client, and update `firstSyncId` if sync groups change.**
+6. Update `lastSyncId` on the client, and update `firstSyncId` if sync groups change.
 
-7. **Resolve completed transactions waiting for the `lastSyncId`.**
+7. Resolve completed transactions waiting for the `lastSyncId`.
 
 After receiving the delta packets, the client checks if any transactions are waiting for the `lastSyncId` of those packets. If such transactions exist, they will be resolved, as shown here:
 
@@ -1540,6 +1540,6 @@ class Issue {
 
 ## Credit
 
-Thanks to Tuomas Artman, who generously shared how LSE works in talks and podcasts.
+Thanks to Tuomas Artman for generously sharing insights into how LSE works in talks and podcasts.
 
-Thanks to @zxch3n, @vincentdchan and @promer94 for their reviews.
+Special thanks to @zxch3n, @vincentdchan, and @promer94 for their valuable reviews.
