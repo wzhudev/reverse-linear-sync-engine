@@ -94,7 +94,7 @@ First and foremost, we need to figure out how models are defined in LSE.
 ### `ModelRegistry`
 
 > [!NOTE]
-> Code References
+> Code references
 >
 > - `rr`: `ModelRegistry`
 
@@ -119,7 +119,7 @@ We will discuss how some of this metadata is registered in this chapter, focusin
 ### Model
 
 > [!NOTE]
-> Code References
+> Code references
 >
 > - `We`: `ClientModel` decorator
 > - `as`: `Model` base model class
@@ -187,7 +187,7 @@ You can refer to the source code for more details about how `ClientModel` works.
 ### Properties
 
 > [!NOTE]
-> Code References
+> Code references
 >
 > - `vn`: `PropertyTypeEnum` enumeration
 > - `w`: `Property` decorator
@@ -324,7 +324,7 @@ _There are lots of `referenceModel` and `reference` pairs in the `ModelRegistry`
 ### Observability (`M1`)
 
 > [!NOTE]
-> Code References
+> Code references
 >
 > - `M1`: `observabilityHelper`
 
@@ -371,7 +371,7 @@ There are three types of bootstrapping in LSE: **full bootstrapping**, **partial
 ### Create `ObjectStore`s
 
 > [!NOTE]
-> Code References
+> Code references
 >
 > - `cce`: `StoreManager`
 > - `p3`: `PartialStore`
@@ -400,7 +400,7 @@ Notably, for models with a `loadStrategy` of `partial`, an additional database n
 ### Create Databases & Tables in IndexedDB
 
 > [!NOTE] 
-> Code References
+> Code references
 >
 > - `eg.open`: `Database.open`
 > - `jn` or `Xn`: `DatabaseManager` - `databaseInfo`, `registerDatabase`, `database`
@@ -484,7 +484,8 @@ This concept is crucial in LSE. While all workspaces share the same `lastSyncId`
 > [!NOTE]  
 > Understanding how `SyncGroup` works was particularly challenging in earlier versions of LSE. However, the introduction of `userSyncGroup` and `teamSyncGroup` in recent updates by the Linear team has clarified its purpose. These changes reveal that a `SyncGroup` is essentially a collection of models linked to either a specific "User" or "Team."
 
-> [!NOTE] Linear's Database Metadata Changes  
+> [!NOTE] 
+> Linear's Database Metadata Changes  
 > In late 2024, Linear modified the database metadata fields. While this screenshot reflects the updated metadata, the source code excerpts were taken before the change. For example, `subscribedSyncGroups` is replaced by `userSyncGroups`. Since this update does not significantly impact the core concepts of how LSE works, I will omit these differences in this post.
 
 ---
@@ -516,7 +517,7 @@ At this point, LSE has prepared the databases and is ready to load data from the
 ### Determine the Bootstrapping Type
 
 > [!NOTE]
-> Code References
+> Code references
 >
 > - `ng.bootstrap`: `SyncClient.bootstrap`
 > - `eg.requiredBootstrap`: `Database.requiredBootstrap`
@@ -553,7 +554,7 @@ Additional fields in the `requiredBootstrap` 's return include:
 ### Bootstrapping the Database
 
 > [!NOTE] 
-> Code References
+> Code references
 >
 > 1. `ng.bootstrap`: `SyncClient.bootstrap`
 > 2. `eg.bootstrap`: `Database.bootstrap`
@@ -573,7 +574,8 @@ It has two parameters:
 1. **`type`**: In our case, it is `"full"`.
 2. **`onlyModels`**: A comma-separated list of the model names to be loaded. This corresponds to the `modelsToLoad` returned by `requiredBootstrap`.
 
-> [!NOTE] Linear's bootstrapping requests had changed
+> [!NOTE] 
+> Linear's bootstrapping requests had changed
 > As part of an optimization rolled out in late 2024, the Linear team split this single request into multiple requests to improve cache performance and loading speed in large workspaces. This change does not affect how LSE operates, so I will omit the details here. For more information, open your browser's debug tools and search for `splitToCacheableRequests` in the source code.
 
 And an example response would be like this:
@@ -656,7 +658,9 @@ Key fields:
 - **`subscribedSyncGroups`**: Specifies the sync groups the client should subscribe to for accessing relevant incremental changes.
 - **`returnedModelsCount`**: Ensures request validity by verifying that the number of models in the response matches this count.
 
-> [!NOTE] Linear's bootstrapping requests had changed
+> [!NOTE]
+> Linear's bootstrapping requests had changed
+> 
 > In the aforementioned optimization, Linear moved `subscribedSyncGroups` from the response to a pre-request at `/sync/user_sync_groups`. In the `/sync/bootstrap` request, the sync groups are now included in the request parameters. So it can split bootstrapping requests.
 
 Finally, the retrieved models are written to their respective object stores, and the database metadata is updated accordingly to reflect the changes.
@@ -664,7 +668,7 @@ Finally, the retrieved models are written to their respective object stores, and
 ### Hydration and Object Pool
 
 > [!NOTE] 
-> Code References
+> Code references
 >
 > 1. `ng.bootstrap`: `SyncClient.bootstrap`.
 > 2. `eg.getAllInitialHydratedModelData`: `Database.getAllInitialHydratedModelData`.
@@ -683,7 +687,7 @@ When constructing a model object, LSE does not pass the dehydrated model data di
 ### Lazy Hydration
 
 > [!note] 
-> Code References
+> Code references
 >
 > - `as.hydrate`: `Model.hydrate`.
 > - constructor of `Issue` (`re`)
@@ -732,7 +736,9 @@ class Issue extends BaseModel {
 }
 ```
 
-> [!NOTE] Changes of decorators used here
+> [!NOTE] 
+> Changes of decorators used here
+>
 > After I began writing this post, the Linear team introduced a new approach that eliminates the need for developers to manually call the constructor of `LazyReferenceCollection`. In essence, they added more decorators similar to `OneToMany` that automatically construct `LazyReferenceCollection` with various options. Since this change doesn't affect how lazy hydration works, I'll omit it from this post for simplicity.
 
 In the `hydrate` method of `LazyReferenceCollection`, the first to step is to call `this.getCoveringPartialIndexValues` to get partial index values. So what is a partial index?
@@ -740,7 +746,7 @@ In the `hydrate` method of `LazyReferenceCollection`, the first to step is to ca
 ---
 
 > [!note] 
-> Code References
+> Code references
 >
 > - `re.constructor`: `Issue.constructor`
 > - `LazyReferenceCollectionImpl` (`Et`)
@@ -829,7 +835,7 @@ You can clearly see the relationship between the two images above. Essentially, 
 As we'll explore later, partial indexes are used to query models from the server, and also used to check whether the target model has already been fetched from the server.
 
 > [!note]
-> Code References
+> Code references
 >
 > - `ng.hydrateModelsByIndexedKey`: `SyncClient.hydrateModelsByIndexedKey`
 > - `eg.getModelDataByIndexedKey`: `Database.getModelDataByIndexedKey`
@@ -1006,7 +1012,7 @@ In addition to `UpdateTransaction`, there are four other types of transactions, 
 ### Figuring out what has been changed
 
 > [!note]  
-> **Code References**
+> **Code references**
 >
 > - `M1`: The decorator used to add observability to LSE models.
 > - `as.propertyChanged`: `ClientModel.propertyChanged`
@@ -1025,7 +1031,7 @@ It's important to note that **before `save()` is called, the model in memory is 
 ### Generating an `UpdateTransaction`
 
 > [!note]
-> Code References
+> Code references
 >
 > - `as.save`: `ClientModel.save` and it calls `SyncedStore.save`
 > - `sg.save`: `SyncedStore.save` and it calls `SyncClient.update`
@@ -1047,7 +1053,7 @@ At the end of `TransactionQueue.update`, the `TransactionQueue.enqueueTransactio
 ### Queueing transactions
 
 > [!note]
-> Code References
+> Code references
 >
 > - `uce`: `TransactionQueue`
 >   - `enqueueTransaction`
@@ -1108,7 +1114,7 @@ There is also a special array called **`completedButUnsyncedTransactions`**. I w
 ### Executing transactions
 
 > [!NOTE] 
-> Code References
+> Code references
 >
 > - `uce.executeTransactionBatch`: `TransactionQueue.executeTransactionBatch`
 > - `dce.execute`: `TransactionExecutor.execute`
@@ -1191,7 +1197,7 @@ If the server rejects the mutation query, `transactionCompleted` is still called
 ### Persisted Transactions
 
 > [!NOTE] 
-> Code References
+> Code references
 >
 > - `eg.putTransaction`: `Database.putTransaction`
 > - `ng.bootstrap`: `SyncClient.bootstrap`
@@ -1228,7 +1234,7 @@ Let's begin with an overview, similar to what we did in the previous chapters!
 ### Establishing Connection
 
 > [!NOTE] 
-> Code References
+> Code references
 >
 > - `ng.startSyncing`: `SyncClient.startSyncing`
 > - `ng.constructor`: `SyncClient.constructor`
@@ -1269,7 +1275,7 @@ Additionally, the `SyncClient` module listens to the `SyncMessage` channel on th
 ### Applying Deltas
 
 > [!NOTE]
-> Code References
+> Code references
 >
 > - `ng.applyDelta`: `SyncClient.applyDelta`
 > - `ng.constructor`: `SyncClient.constructor`
@@ -1370,7 +1376,7 @@ Here's a refined version of your points:
 ---
 
 > [!NOTE]  
-> **Code References**
+> **Code references**
 > - `ng.applyDelta`: `SyncClient.applyDelta`
 > - `Zu.supportedPacket`: `DependentsLoader.supportedPacket`
 
@@ -1420,7 +1426,7 @@ The second loop handles sync actions one by one.
 For actions of type "I", "V", "U", and "C", LSE will **rebase** `UpdateTransactions` onto them.
 
 > [!NOTE]  
-> **Code References**
+> **Code references**
 > - `ng.applyDelta`: `SyncClient.applyDelta`
 > - `uce.rebaseTransactions`: `SyncActionStore.addSyncPacket`
 > - `zu.rebase`: `UpdateTransaction.rebase`
