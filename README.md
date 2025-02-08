@@ -1,5 +1,10 @@
 # A Reverse Study of Linear Sync Engine
 
+> [!IMPORTANT]
+> Check out the [SUMMARY](./SUMMARY.md)
+> 
+> My friends found this too long, so I wrote a summary highlighting the key points—making it a 10-minute read. If you're only interested in the main ideas or want to skip the implementation details, just read the summary.
+
 I work on collaborative softwares, focusing on rich text editors and spreadsheets. **Collaboration engines**, also known as **data sync engines**, play a pivotal role in enhancing user experience in these softwares. They enable real-time, simultaneous edits on the same file while offering features like offline availability and file history. Typically, engineers use **[Operational Transformation (OT)](https://en.wikipedia.org/wiki/Operational_transformation)** or **[Conflict-free Replicated Data Types (CRDTs)](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type)** to build sync engines. While these technologies are effective for editors and spreadsheets, they may not be ideal for other types of applications. Here's why.
 
 OT is widely adopted but notorious for its complexity. This complexity stems from the need to account for diverse data models and operation sets across different applications, which requires significant effort to implement correct operations and transformation functions. While OT excels at synchronizing edits, preserving user intent, and handling conflicts, its complexity often makes it overkill for simpler use cases—such as managing user information or file metadata—where a straightforward **last-writer-wins** approach might suffice.
@@ -145,6 +150,7 @@ Models' metadata includes:
    - **`local`**: Models that are stored exclusively in the local database. No models have been identified using this strategy.
 2. **`partialLoadMode`**: Specifies how a model is hydrated, with three possible values: `full`, `regular`, and `lowPriority`.
 3. **`usedForPartialIndexes`**: Relates to the functionality of partial indexing.
+4. etc.
 
 ![](./imgs/count-of-models.png)
 
@@ -450,7 +456,6 @@ When a transaction is successfully executed by the server, the global **`lastSyn
 __Each changes in the database increments the `lastSyncId` by 1. And the `lastSyncId` is also associated with the transaction and the delta packet.__
 
 The server includes the updated `lastSyncId` in its response to the client that initiated the transaction. Additionally, when the server broadcasts delta packets (which represent incremental changes) to all clients, these packets are also associated with the corresponding `lastSyncId`. This ensures that clients can synchronize their local state with the server using the latest database version.
-
 
 The concept of `sync id` is similar to a **file revision number** in operational transformation (OT) algorithms. (For more details, you can check out my [detailed article on OT](https://wzhu.dev/posts/ot).) However, unlike a file revision number that typically applies to a single file, **`lastSyncId` spans the entire database**, regardless of which workspace the changes occur in.
 
@@ -1229,7 +1234,6 @@ Let's begin with an overview, similar to what we did in the previous chapters!
 > - `ng.constructor`: `SyncClient.constructor`
 > - `handshakeCallback` callback
 
-
 The final phase of bootstrapping involves establishing a WebSocket connection to the server to receive incremental updates after loading persisted transactions from the local database. In the `handshakeCallback`, which is executed once the connection is established, the client compares the `lastSyncId` from the callback's parameters with the local lastSyncId to determine whether any incremental changes have been **missed**. If a discrepancy is found, the client requests the missing delta packets from the server and applies them accordingly.
 
 The parameters of the callback would appear as follows:
@@ -1533,3 +1537,9 @@ class Issue {
 ```
 
 **Action** and **computed** are core MobX primitives. During bootstrapping, these properties are made observable by directly calling MobX's `makeObservable` API.
+
+## Credit
+
+Thanks to Tuomas Artman, who generously shared how LSE works in talks and podcasts.
+
+Thanks to @zxch3n, @vincentdchan and @promer94 for their reviews.
