@@ -1538,8 +1538,8 @@ class Issue {
 
 **Action** and **computed** are core MobX primitives. During bootstrapping, these properties are made observable by directly calling MobX's `makeObservable` API.
 
-## Credit
+## Credits
 
 Thanks to Tuomas Artman for generously sharing insights into how LSE works in talks and podcasts.
 
-Special thanks to @zxch3n, @vincentdchan, and @promer94 for their valuable reviews.
+Special thanks to [@zxch3n](https://github.com/zxch3n), [@vincentdchan](https://github.com/vincentdchan), and [@promer94](https://github.com/promer94) for their valuable reviews.
