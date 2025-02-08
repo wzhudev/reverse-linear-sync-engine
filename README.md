@@ -21,7 +21,7 @@ issue.save();
 
 I believe LSE is exactly what I've been looking for, so I decided to reverse-engineer its frontend code to understand how it works. Additionally, I'm documenting my findings to help others who are interested as I am.
 
-> [!INFO]
+> [!NOTE]
 > Good References
 >
 > This [gist](https://gist.github.com/pesterhazy/3e039677f2e314cb77ffe3497ebca07b#gistcomment-5184039) introduces some off-the-shelf solutions, such as ElectricSQL and ZeroSync (which, BTW, I am also very curious about), for general-purpose synchronization. You might want to check them out as well.
@@ -97,7 +97,7 @@ When Linear starts, it first generates metadata for models, including their prop
 
 ![model registry](./imgs/model-registry.png)
 
-> [!INFO]
+> [!NOTE]
 > Uglified Names
 >
 > The names in the screenshots (e.g., Xs) may differ from those in the GitHub source code (rr). Additionally, names may vary across different screenshots. This is completely normal, as Linear ships nearly every half hour!
@@ -310,7 +310,7 @@ _There are lots of `referenceModel` and `reference` pairs in the `ModelRegistry`
 
 `ModelRegistry` includes a special property called **`__schemaHash`**, which is a hash of all models' metadata and their properties' metadata. This hash is crucial for determining whether the local database requires migration, a topic covered in detail in a later chapter. I have already added comments in the source code explaining how it is calculated, so I won't repeat that here.
 
-> [!INFO]
+> [!NOTE]
 > TypeScript Decorators
 >
 > When TypeScript transpiles decorators, it processes property decorators before model decorators. As a result, property decorators are executed first. By the time `ModelRegistry.registerModel` is called, all properties of that model have already been registered, and their metadata will also be included in the `__schemaHash`.
