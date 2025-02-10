@@ -1,3 +1,5 @@
+![](./imgs/title-image.png)
+
 # Reverse Engineering Linear's Sync Engine: A Detailed Study
 
 > [!IMPORTANT]
@@ -1549,3 +1551,7 @@ class Issue {
 Thanks to Tuomas Artman for generously sharing insights into how LSE works in talks and podcasts.
 
 Special thanks to [@zxch3n](https://github.com/zxch3n), [@vincentdchan](https://github.com/vincentdchan), and [@promer94](https://github.com/promer94) for their valuable reviews.
+
+---
+
+© 2025 Wenzhao Hu. This work is licensed under the Creative Commons Attribution 4.0 International License. To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
