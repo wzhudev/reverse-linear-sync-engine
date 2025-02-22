@@ -1,5 +1,9 @@
 ![](./imgs/title-image.png)
 
+> [!CAUTION]
+> 
+> Disclaimer: This research is conducted solely for learning purposes. Readers **should not** use the findings to develop software that competes with Linear. If the Linear team requests, I will be more than happy to remove this repository.
+
 # Reverse Engineering Linear's Sync Engine: A Detailed Study
 
 > [!IMPORTANT]
