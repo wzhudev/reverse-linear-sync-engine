@@ -1,11 +1,12 @@
+> This is a pretty awesome (and correct) write-up of our sync engine.
+> -- Tuomas Artman (Co-founder and CTO of Linear) on [Discusssions](https://github.com/wzhudev/reverse-linear-sync-engine/discussions/2#discussioncomment-12892194)
+
+
 ![](./imgs/title-image.png)
 
 > [!CAUTION]
 > 
 > **Disclaimer**: This research is conducted solely for learning purposes. Readers should not use the findings to develop software that competes with Linear or attempt to use the information provided to disrupt or compromise Linear’s systems. If the Linear team requests, I will be more than happy to remove this repository.
-
-> This is a pretty awesome (and correct) write-up of our sync engine.
-> -- Tuomas Artman
 
 # Reverse Engineering Linear's Sync Engine: A Detailed Study
 
