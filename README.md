@@ -1,4 +1,6 @@
+> [!IMPORTANT]
 > This is a pretty awesome (and correct) write-up of our sync engine.
+> 
 > -- Tuomas Artman (Co-founder and CTO of Linear) on [Discusssions](https://github.com/wzhudev/reverse-linear-sync-engine/discussions/2#discussioncomment-12892194)
 
 
