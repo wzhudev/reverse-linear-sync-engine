@@ -1,22 +1,19 @@
-> [!IMPORTANT]
+# Reverse Engineering Linear's Sync Engine: A Detailed Study
+
 > This is a pretty awesome (and correct) write-up of our sync engine. ([link](https://github.com/wzhudev/reverse-linear-sync-engine/discussions/2#discussioncomment-12892194))
 > 
 > ...probably the best documentation that exists - internally or externally. ([link](https://x.com/artman/status/1927808159139111007))
+>
+> ...documentation that is correct and more complete than what Linear publishes internally. ([link](https://news.ycombinator.com/item?id=44123131))
 > 
 > -- Tuomas Artman (Co-founder and CTO of Linear) 
 
-> [!IMPORTANT]
-> 
-> **Disclaimer**: This research is conducted solely for learning purposes. Readers should not use the findings to develop software that competes with Linear or attempt to use the information provided to disrupt or compromise Linear’s systems. If the Linear team requests, I will be more than happy to remove this repository.
+![](./imgs/title-image.png)
 
 > [!IMPORTANT]
 > Check out the [SUMMARY](./SUMMARY.md)
 > 
 > My friends found this too long, so I wrote a summary highlighting the key points—making it a 10-minute read. If you're only interested in the main ideas or want to skip the implementation details, just read the summary.
-
-![](./imgs/title-image.png)
-
-# Reverse Engineering Linear's Sync Engine: A Detailed Study
 
 **Join in [discussion](https://github.com/wzhudev/reverse-linear-sync-engine/discussions/2).**
 
@@ -1558,6 +1555,10 @@ class Issue {
 ```
 
 **Action** and **computed** are core MobX primitives. During bootstrapping, these properties are made observable by directly calling MobX's `makeObservable` API.
+
+## Disclaimer
+
+This research is conducted solely for learning purposes. Readers should not use the findings to develop software that competes with Linear or attempt to use the information provided to disrupt or compromise Linear’s systems. If the Linear team requests, I will be more than happy to remove this repository.
 
 ## Credits
 
